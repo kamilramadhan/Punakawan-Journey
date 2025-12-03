@@ -11,11 +11,13 @@ const gameState = {
   status: 'loading', // loading, charSelect, playing, paused
   selectedCharacter: 'bagong',
   isPointerLocked: false,
-  currentLocation: 'Borobudur Temple'
+  currentLocation: 'Borobudur Temple',
+  isNight: false
 };
 
-// ===== COLLISION BOXES =====
+// ===== COLLISION BOXES & OBJECTS =====
 const collisionBoxes = [];
+const lamps = []; // Store lamp lights to toggle them
 
 // ===== CHARACTER DATA WITH LORE =====
 const characterData = {
@@ -288,6 +290,7 @@ const gameHud = document.getElementById('game-hud');
 const playerAvatar = document.getElementById('player-avatar');
 const playerNameEl = document.getElementById('player-name');
 const locationNameEl = document.getElementById('location-name');
+const dayNightBtn = document.getElementById('day-night-btn');
 const menuBtn = document.getElementById('menu-btn');
 const pauseMenu = document.getElementById('pause-menu');
 const resumeBtn = document.getElementById('resume-btn');
@@ -406,6 +409,12 @@ function checkCollision(x, z, radius = 1.5) {
   return { collision: false };
 }
 
+// ===== TERRAIN HEIGHT FUNCTION =====
+function getTerrainHeight(x, z) {
+  // Simple wave pattern matching createWorld
+  return Math.sin(x * 0.01) * Math.cos(z * 0.01) * 3;
+}
+
 // ===== CREATE WORLD =====
 function createWorld() {
   // Ground plane (grass) - much larger
@@ -421,7 +430,17 @@ function createWorld() {
   for (let i = 0; i < vertices.length; i += 3) {
     const x = vertices[i];
     const z = vertices[i + 1];
-    vertices[i + 2] = Math.sin(x * 0.01) * Math.cos(z * 0.01) * 3 + Math.random() * 0.5;
+    // Use the deterministic height function
+    vertices[i + 2] = getTerrainHeight(x, -z); // Note: z is inverted due to rotation? Let's just use x, z from geometry which maps to world x, z
+    // Actually, PlaneGeometry is on XY plane. 
+    // When rotated -90 deg on X:
+    // Local X -> World X
+    // Local Y -> World -Z
+    // Local Z -> World Y
+    // So we want height (Local Z) to be function of World X and World Z.
+    // World X = Local X
+    // World Z = -Local Y => Local Y = -World Z
+    vertices[i + 2] = getTerrainHeight(x, -z);
   }
   ground.geometry.attributes.position.needsUpdate = true;
   ground.geometry.computeVertexNormals();
@@ -437,6 +456,12 @@ function createWorld() {
 
   // Create trees (avoiding landmarks)
   createTrees();
+  
+  // Create rocks for detail
+  createRocks();
+
+  // Create lamps along paths
+  createLamps();
 
   // Create POI markers
   createPOIMarkers();
@@ -1006,6 +1031,12 @@ function createMainStupa() {
   return group;
 }
 
+const asphaltMaterial = new THREE.MeshStandardMaterial({
+  color: 0x333333,
+  roughness: 0.8,
+  metalness: 0.1
+});
+
 function createAllPaths() {
   // Create paths connecting all landmarks
   const pathConnections = [
@@ -1032,17 +1063,79 @@ function createAllPaths() {
     const length = Math.sqrt(dx * dx + dz * dz);
     const angle = Math.atan2(dx, dz);
     
-    const pathGeom = new THREE.PlaneGeometry(6, length);
-    const pathMesh = new THREE.Mesh(pathGeom, pathMaterial);
-    pathMesh.rotation.x = -Math.PI / 2;
-    pathMesh.rotation.z = -angle;
-    pathMesh.position.set(
-      (path.start.x + path.end.x) / 2,
-      0.05,
-      (path.start.z + path.end.z) / 2
-    );
-    pathMesh.receiveShadow = true;
-    scene.add(pathMesh);
+    // Create segmented path to follow terrain
+    const segments = Math.ceil(length / 2); // 1 segment per 2 units
+    const pathGeom = new THREE.PlaneGeometry(6, length, 2, segments);
+    
+    // Adjust vertices to match terrain height
+    const posAttribute = pathGeom.attributes.position;
+    const vertex = new THREE.Vector3();
+    
+    // We need to transform local vertices to world space to get height, then apply height
+    // But PlaneGeometry is created at origin. We will position it later.
+    // So we need to calculate what the world position WOULD be.
+    
+    // Center of path in world space
+    const centerX = (path.start.x + path.end.x) / 2;
+    const centerZ = (path.start.z + path.end.z) / 2;
+    
+    for (let i = 0; i < posAttribute.count; i++) {
+      vertex.fromBufferAttribute(posAttribute, i);
+      
+      // Transform local vertex to world space manually
+      // Rotation: -90 deg around X, -angle around Z
+      // Position: centerX, 0, centerZ
+      
+      // 1. Apply rotation -Math.PI/2 around X (standard for ground plane)
+      // Local (x, y, z) -> (x, z, -y) ? No.
+      // Plane is XY. Rotated X -90 -> XZ plane.
+      // Local X -> World X (relative to center, rotated by angle)
+      // Local Y -> World Z (relative to center, rotated by angle)
+      // Local Z -> World Y (Height)
+      
+      // Let's simplify: Iterate along the line in world space
+      // The plane is created with width along X and height along Y.
+      // When we rotate X -90, width is along X, height is along -Z.
+      // Then we rotate Z -angle.
+      
+      // Let's just place small segments instead of one big warped plane.
+      // It's easier and less math-heavy.
+    }
+    
+    // Alternative: Place small segments
+    const segmentLength = 4;
+    const numSegments = Math.ceil(length / segmentLength);
+    
+    for (let i = 0; i < numSegments; i++) {
+      const t = i / numSegments;
+      const nextT = (i + 1) / numSegments;
+      
+      const x1 = path.start.x + dx * t;
+      const z1 = path.start.z + dz * t;
+      const x2 = path.start.x + dx * nextT;
+      const z2 = path.start.z + dz * nextT;
+      
+      const segCenterX = (x1 + x2) / 2;
+      const segCenterZ = (z1 + z2) / 2;
+      
+      const h1 = getTerrainHeight(x1, z1);
+      const h2 = getTerrainHeight(x2, z2);
+      const avgH = (h1 + h2) / 2;
+      
+      // Calculate rotation to match slope
+      const slopeAngle = Math.atan2(h2 - h1, segmentLength);
+      
+      const segGeom = new THREE.PlaneGeometry(6, segmentLength);
+      const segMesh = new THREE.Mesh(segGeom, asphaltMaterial);
+      
+      segMesh.position.set(segCenterX, avgH + 0.05, segCenterZ);
+      segMesh.rotation.x = -Math.PI / 2 + slopeAngle; // Tilt to match slope
+      segMesh.rotation.z = -angle;
+      segMesh.rotation.order = 'YXZ'; // Important for combining rotations
+      
+      segMesh.receiveShadow = true;
+      scene.add(segMesh);
+    }
   });
 }
 
@@ -1078,8 +1171,9 @@ function createTrees() {
   }
 
   treePositions.forEach(pos => {
+    const h = getTerrainHeight(pos.x, pos.z);
     const tree = createTree();
-    tree.position.set(pos.x, 0, pos.z);
+    tree.position.set(pos.x, h, pos.z);
     scene.add(tree);
   });
 }
@@ -1087,37 +1181,146 @@ function createTrees() {
 function createTree() {
   const group = new THREE.Group();
 
-  // Trunk
-  const trunkGeom = new THREE.CylinderGeometry(0.3, 0.5, 4, 8);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 1 });
+  // Trunk - slightly curved for natural look
+  const trunkCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0.2, 2, 0.1),
+    new THREE.Vector3(-0.1, 4, 0)
+  ]);
+  const trunkGeom = new THREE.TubeGeometry(trunkCurve, 4, 0.4, 8, false);
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 1 });
   const trunk = new THREE.Mesh(trunkGeom, trunkMat);
-  trunk.position.y = 2;
   trunk.castShadow = true;
   group.add(trunk);
 
-  // Foliage (multiple spheres for natural look)
+  // Foliage - Tropical style (palm-ish or banyan-ish)
   const foliageMat = new THREE.MeshStandardMaterial({ color: 0x2d5a27, roughness: 0.8 });
   
-  const foliage1 = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), foliageMat);
-  foliage1.position.set(0, 5, 0);
-  foliage1.castShadow = true;
-  group.add(foliage1);
+  // Main canopy
+  const canopyGeom = new THREE.DodecahedronGeometry(2.5);
+  const canopy = new THREE.Mesh(canopyGeom, foliageMat);
+  canopy.position.set(0, 4.5, 0);
+  canopy.scale.y = 0.8;
+  canopy.castShadow = true;
+  group.add(canopy);
 
-  const foliage2 = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), foliageMat);
-  foliage2.position.set(1, 6, 0.5);
-  foliage2.castShadow = true;
-  group.add(foliage2);
-
-  const foliage3 = new THREE.Mesh(new THREE.SphereGeometry(1.2, 8, 8), foliageMat);
-  foliage3.position.set(-0.8, 6.5, -0.3);
-  foliage3.castShadow = true;
-  group.add(foliage3);
+  // Smaller clumps
+  for(let i=0; i<5; i++) {
+    const size = 1 + Math.random();
+    const clump = new THREE.Mesh(new THREE.DodecahedronGeometry(size), foliageMat);
+    clump.position.set(
+      (Math.random() - 0.5) * 3,
+      4 + Math.random() * 2,
+      (Math.random() - 0.5) * 3
+    );
+    clump.castShadow = true;
+    group.add(clump);
+  }
 
   // Random scale variation
   const scale = 0.8 + Math.random() * 0.6;
   group.scale.set(scale, scale, scale);
 
   return group;
+}
+
+function createRocks() {
+  const rockGeom = new THREE.DodecahedronGeometry(1);
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.9 });
+
+  for (let i = 0; i < 100; i++) {
+    const rock = new THREE.Mesh(rockGeom, rockMat);
+    
+    // Random position
+    const x = (Math.random() - 0.5) * 900;
+    const z = (Math.random() - 0.5) * 900;
+    
+    // Avoid center
+    if (Math.abs(x) < 50 && Math.abs(z) < 50) continue;
+
+    const h = getTerrainHeight(x, z);
+    rock.position.set(x, h + 0.5, z);
+    
+    // Random scale and rotation
+    const s = 0.5 + Math.random() * 1.5;
+    rock.scale.set(s, s * 0.6, s);
+    rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    scene.add(rock);
+  }
+}
+
+function createLamps() {
+  // Place lamps along the main paths
+  const pathPoints = [
+    // Borobudur to Prambanan
+    { start: { x: 20, z: 20 }, end: { x: 180, z: 180 }, count: 20 },
+    // Borobudur to Lempuyang
+    { start: { x: -20, z: 20 }, end: { x: -180, z: 180 }, count: 20 },
+    // Borobudur to Danau Batur
+    { start: { x: 0, z: -20 }, end: { x: 0, z: -230 }, count: 25 },
+    // Around Borobudur
+    { start: { x: -35, z: -35 }, end: { x: 35, z: -35 }, count: 8 },
+    { start: { x: -35, z: 35 }, end: { x: 35, z: 35 }, count: 8 },
+  ];
+
+  pathPoints.forEach(path => {
+    for (let i = 0; i <= path.count; i++) {
+      const t = i / path.count;
+      const x = path.start.x + (path.end.x - path.start.x) * t;
+      const z = path.start.z + (path.end.z - path.start.z) * t;
+      
+      const h = getTerrainHeight(x, z);
+      
+      // Offset slightly from path center
+      createLamp(x + 4, z, h);
+      createLamp(x - 4, z, h);
+    }
+  });
+}
+
+function createLamp(x, z, h) {
+  const group = new THREE.Group();
+  group.position.set(x, h, z);
+
+  // Post
+  const postGeom = new THREE.CylinderGeometry(0.1, 0.15, 3, 8);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x2c1a0e, roughness: 0.9 });
+  const post = new THREE.Mesh(postGeom, postMat);
+  post.position.y = 1.5;
+  post.castShadow = true;
+  group.add(post);
+
+  // Lantern holder
+  const holderGeom = new THREE.BoxGeometry(0.6, 0.1, 0.6);
+  const holder = new THREE.Mesh(holderGeom, postMat);
+  holder.position.y = 2.8;
+  group.add(holder);
+
+  // Lantern glass/paper
+  const lanternGeom = new THREE.BoxGeometry(0.4, 0.6, 0.4);
+  const lanternMat = new THREE.MeshStandardMaterial({ 
+    color: 0xffaa00, 
+    emissive: 0xff5500,
+    emissiveIntensity: 0.2,
+    transparent: true,
+    opacity: 0.9
+  });
+  const lantern = new THREE.Mesh(lanternGeom, lanternMat);
+  lantern.position.y = 2.5;
+  group.add(lantern);
+
+  // Light source
+  const light = new THREE.PointLight(0xffaa00, 0, 15); // Start with intensity 0 (Day)
+  light.position.y = 2.5;
+  group.add(light);
+  
+  // Store light reference for toggling
+  lamps.push({ light: light, mesh: lantern });
+
+  scene.add(group);
 }
 
 function createPOIMarkers() {
@@ -1156,7 +1359,8 @@ function createPOIMarkers() {
     light.position.y = 2.5;
     markerGroup.add(light);
 
-    markerGroup.position.set(poi.position.x, 0, poi.position.z);
+    const h = getTerrainHeight(poi.position.x, poi.position.z);
+    markerGroup.position.set(poi.position.x, h, poi.position.z);
     scene.add(markerGroup);
   });
 }
@@ -1188,6 +1392,11 @@ class Player {
     // Create sprite
     this.mesh = null;
     this.material = null;
+    
+    // Player light (aura/lantern)
+    this.light = new THREE.PointLight(0xffaa00, 1, 20);
+    this.light.position.set(0, 5, 0);
+    scene.add(this.light);
   }
 
   async loadTextures(charName) {
@@ -1341,9 +1550,10 @@ class Player {
     this.position.y += this.velocity.y * delta;
     this.position.z = newZ;
 
-    // Ground check
-    if (this.position.y <= 0) {
-      this.position.y = 0;
+    // Ground check with terrain height
+    const terrainHeight = getTerrainHeight(this.position.x, this.position.z);
+    if (this.position.y <= terrainHeight) {
+      this.position.y = terrainHeight;
       this.velocity.y = 0;
       this.isGrounded = true;
     }
@@ -1356,6 +1566,12 @@ class Player {
     // Update mesh position
     this.mesh.position.copy(this.position);
     this.mesh.position.y += 2.5;
+    
+    // Update light position
+    if (this.light) {
+      this.light.position.copy(this.position);
+      this.light.position.y += 5;
+    }
 
     // Animation
     this.updateAnimation(delta);
@@ -1492,6 +1708,67 @@ canvas.addEventListener('wheel', (e) => {
 });
 
 // ===== UI FUNCTIONS =====
+function toggleDayNight() {
+  gameState.isNight = !gameState.isNight;
+  
+  if (gameState.isNight) {
+    // Night Mode
+    scene.background = new THREE.Color(0x050510);
+    scene.fog.color.setHex(0x050510);
+    scene.fog.density = 0.002; // Thicker fog at night
+    
+    // Dim sunlight (moonlight) - Brighter moonlight
+    sunLight.intensity = 0.3;
+    sunLight.color.setHex(0xaaaaff);
+    sunLight.position.set(-50, 100, -50); // Moon position
+    
+    // Darker ambient - But not too dark
+    ambientLight.intensity = 0.2;
+    hemiLight.intensity = 0.2;
+    hemiLight.groundColor.setHex(0x111111);
+    
+    // Turn on lamps
+    lamps.forEach(lamp => {
+      lamp.light.intensity = 2.0;
+      lamp.mesh.material.emissiveIntensity = 1.0;
+    });
+    
+    dayNightBtn.textContent = '🌙';
+    dayNightBtn.style.background = '#333';
+    dayNightBtn.style.color = '#fff';
+    
+  } else {
+    // Day Mode
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog.color.setHex(0x87CEEB);
+    scene.fog.density = 0.0008;
+    
+    // Bright sunlight
+    sunLight.intensity = 1.2;
+    sunLight.color.setHex(0xfff5e6);
+    sunLight.position.set(100, 200, 100);
+    
+    // Bright ambient
+    ambientLight.intensity = 0.4;
+    hemiLight.intensity = 0.5;
+    hemiLight.groundColor.setHex(0x3d5c3d);
+    
+    // Turn off lamps
+    lamps.forEach(lamp => {
+      lamp.light.intensity = 0;
+      lamp.mesh.material.emissiveIntensity = 0.2;
+    });
+    
+    dayNightBtn.textContent = '☀️';
+    dayNightBtn.style.background = 'rgba(0, 0, 0, 0.6)';
+    dayNightBtn.style.color = '#fff';
+  }
+}
+
+if (dayNightBtn) {
+  dayNightBtn.addEventListener('click', toggleDayNight);
+}
+
 function showCharacterSelection() {
   loadingScreen.style.display = 'none';
   charSelection.style.display = 'flex';
@@ -1503,8 +1780,15 @@ function showCharacterSelection() {
     const card = document.createElement('div');
     card.className = 'char-card' + (key === gameState.selectedCharacter ? ' selected' : '');
     card.innerHTML = `
-      <img src="${char.idle[0]}" alt="${char.name}" />
-      <div class="name">${char.name}</div>
+      <div class="card-inner">
+        <div class="char-image-container">
+          <img src="${char.idle[0]}" alt="${char.name}" />
+        </div>
+        <div class="char-info">
+          <div class="name">${char.name}</div>
+          <div class="title">${char.title}</div>
+        </div>
+      </div>
     `;
     card.addEventListener('click', () => {
       document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
