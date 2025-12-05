@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ==========================================
 // WAYANG OPEN WORLD - JAWA & BALI
@@ -12,7 +13,10 @@ const gameState = {
   selectedCharacter: 'bagong',
   isPointerLocked: false,
   currentLocation: 'Borobudur Temple',
-  isNight: false
+  isNight: false,
+  currentTime: 12.0, // Current time in hours (0-24)
+  timeAutoPlay: true, // Auto increment time
+  timeCycleDuration: 300 // 5 minutes in seconds for full 24h cycle
 };
 
 // ===== COLLISION BOXES & OBJECTS =====
@@ -72,6 +76,11 @@ const landmarks = {
     position: { x: 0, y: 0, z: -250 },
     name: 'Danau Batur',
     color: 0x4682B4
+  },
+  candiparit: {
+    position: { x: 150, y: 0, z: -150 },
+    name: 'Candi Parit',
+    color: 0xA0826D
   }
 };
 
@@ -246,6 +255,29 @@ LEGENDA:
 Konon Danau Batur dan Danau Bratan (di Bedugul) dulunya satu. Ketika Dewa Wisnu membelah gunung untuk mengairi Bali, terbentuklah dua danau terpisah.`
   },
 
+  // === CANDI PARIT ===
+  {
+    id: 'candiparit-main',
+    position: { x: 150, y: 0, z: -105 },
+    title: 'Candi Parit (Candi Apit)',
+    description: `Candi Parit atau Candi Apit adalah salah satu candi yang merupakan bagian dari kompleks percandian di Jawa Tengah.
+
+SEJARAH:
+Candi ini dibangun pada masa kejayaan kerajaan Hindu-Buddha di Jawa. Nama "Parit" atau "Apit" mengacu pada posisinya yang mengapit atau berada di samping struktur utama kompleks candi.
+
+ARSITEKTUR:
+Candi Parit menampilkan arsitektur khas periode klasik Jawa dengan:
+• Struktur batu andesit yang kokoh
+• Ornamen relief yang mendetail
+• Proporsi harmonis khas percandian Jawa
+
+FUNGSI:
+Sebagai candi perwara (candi pendamping), Candi Parit berfungsi sebagai pelengkap candi utama dalam kompleks percandian. Candi-candi perwara biasanya digunakan untuk menyimpan arca atau sebagai tempat pemujaan tambahan.
+
+PELESTARIAN:
+Candi ini telah mengalami beberapa kali pemugaran untuk menjaga kelestariannya sebagai warisan budaya Indonesia.`
+  },
+
   // === PUNAKAWAN INFO ===
   {
     id: 'punakawan-info',
@@ -290,7 +322,6 @@ const gameHud = document.getElementById('game-hud');
 const playerAvatar = document.getElementById('player-avatar');
 const playerNameEl = document.getElementById('player-name');
 const locationNameEl = document.getElementById('location-name');
-const dayNightBtn = document.getElementById('day-night-btn');
 const menuBtn = document.getElementById('menu-btn');
 const pauseMenu = document.getElementById('pause-menu');
 const resumeBtn = document.getElementById('resume-btn');
@@ -450,6 +481,7 @@ function createWorld() {
   createPrambananTemple(200, 200);
   createLempuyangTemple(-200, 200);
   createDanauBatur(0, -250);
+  loadCandiParit(150, -150);
 
   // Create paths connecting landmarks
   createAllPaths();
@@ -899,6 +931,46 @@ function createDanauBatur(offsetX, offsetZ) {
   scene.add(lakeGroup);
 }
 
+// ===== CANDI PARIT (3D GLTF MODEL) =====
+function loadCandiParit(offsetX, offsetZ) {
+  const loader = new GLTFLoader();
+  
+  loader.load(
+    './candiparit/scene.gltf',
+    function (gltf) {
+      const model = gltf.scene;
+      
+      // Position the model
+      model.position.set(offsetX, 0, offsetZ);
+      
+      // Scale the model (adjust as needed based on visual appearance)
+      model.scale.set(12, 12, 12);
+      
+      // Enable shadows for all meshes in the model
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      
+      // Add to scene
+      scene.add(model);
+      
+      // Add collision box around the model
+      addCollisionBox(offsetX, offsetZ, 40, 40);
+      
+      console.log('Candi Parit loaded successfully');
+    },
+    function (xhr) {
+      console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    function (error) {
+      console.error('Error loading Candi Parit:', error);
+    }
+  );
+}
+
 function createBoat() {
   const group = new THREE.Group();
 
@@ -1055,6 +1127,11 @@ function createAllPaths() {
     { start: { x: 200, z: 200 }, end: { x: -200, z: 200 } },  // Prambanan to Lempuyang
     { start: { x: 200, z: 200 }, end: { x: 100, z: -150 } },  // Prambanan to Danau Batur
     { start: { x: -200, z: 200 }, end: { x: -100, z: -150 } }, // Lempuyang to Danau Batur
+    
+    // Paths to Candi Parit
+    { start: { x: 40, z: -40 }, end: { x: 150, z: -150 } },   // Borobudur to Candi Parit
+    { start: { x: 200, z: 150 }, end: { x: 150, z: -150 } },  // Prambanan to Candi Parit
+    { start: { x: 50, z: -250 }, end: { x: 150, z: -150 } },  // Danau Batur to Candi Parit
   ];
 
   pathConnections.forEach(path => {
@@ -1708,65 +1785,162 @@ canvas.addEventListener('wheel', (e) => {
 });
 
 // ===== UI FUNCTIONS =====
-function toggleDayNight() {
-  gameState.isNight = !gameState.isNight;
+function updateSunPosition(timeValue) {
+  // timeValue: 0-24 (hours)
+  // 0 = midnight, 6 = sunrise, 12 = noon, 18 = sunset, 24 = midnight
   
-  if (gameState.isNight) {
-    // Night Mode
-    scene.background = new THREE.Color(0x050510);
-    scene.fog.color.setHex(0x050510);
-    scene.fog.density = 0.002; // Thicker fog at night
-    
-    // Dim sunlight (moonlight) - Brighter moonlight
-    sunLight.intensity = 0.3;
-    sunLight.color.setHex(0xaaaaff);
-    sunLight.position.set(-50, 100, -50); // Moon position
-    
-    // Darker ambient - But not too dark
-    ambientLight.intensity = 0.2;
-    hemiLight.intensity = 0.2;
-    hemiLight.groundColor.setHex(0x111111);
-    
-    // Turn on lamps
-    lamps.forEach(lamp => {
-      lamp.light.intensity = 2.0;
-      lamp.mesh.material.emissiveIntensity = 1.0;
-    });
-    
-    dayNightBtn.textContent = '🌙';
-    dayNightBtn.style.background = '#333';
-    dayNightBtn.style.color = '#fff';
-    
+  // Update time display
+  const hours = Math.floor(timeValue);
+  const minutes = Math.floor((timeValue % 1) * 60);
+  const timeDisplay = document.getElementById('time-display');
+  if (timeDisplay) {
+    timeDisplay.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  }
+  
+  // Calculate sun angle (0° at horizon east, 180° at horizon west)
+  const sunAngle = (timeValue / 24) * Math.PI * 2 - Math.PI / 2;
+  const sunHeight = Math.sin(sunAngle);
+  const sunX = Math.cos(sunAngle) * 200;
+  const sunY = Math.max(10, sunHeight * 200 + 50); // Keep sun above ground
+  const sunZ = Math.sin(sunAngle) * 100;
+  
+  sunLight.position.set(sunX, sunY, sunZ);
+  
+  // Determine time of day phase
+  let phase;
+  if (timeValue < 5 || timeValue >= 21) {
+    phase = 'night';
+  } else if (timeValue >= 5 && timeValue < 7) {
+    phase = 'dawn';
+  } else if (timeValue >= 7 && timeValue < 17) {
+    phase = 'day';
+  } else if (timeValue >= 17 && timeValue < 19) {
+    phase = 'dusk';
   } else {
-    // Day Mode
-    scene.background = new THREE.Color(0x87CEEB);
-    scene.fog.color.setHex(0x87CEEB);
-    scene.fog.density = 0.0008;
-    
-    // Bright sunlight
-    sunLight.intensity = 1.2;
-    sunLight.color.setHex(0xfff5e6);
-    sunLight.position.set(100, 200, 100);
-    
-    // Bright ambient
-    ambientLight.intensity = 0.4;
-    hemiLight.intensity = 0.5;
-    hemiLight.groundColor.setHex(0x3d5c3d);
-    
-    // Turn off lamps
-    lamps.forEach(lamp => {
-      lamp.light.intensity = 0;
-      lamp.mesh.material.emissiveIntensity = 0.2;
-    });
-    
-    dayNightBtn.textContent = '☀️';
-    dayNightBtn.style.background = 'rgba(0, 0, 0, 0.6)';
-    dayNightBtn.style.color = '#fff';
+    phase = 'evening';
+  }
+  
+  // Smooth interpolation factor
+  let t = 0;
+  
+  switch(phase) {
+    case 'night':
+      // Midnight blues
+      scene.background = new THREE.Color(0x050520);
+      scene.fog.color.setHex(0x050520);
+      scene.fog.density = 0.002;
+      sunLight.intensity = 0.2;
+      sunLight.color.setHex(0x8888ff); // Moonlight
+      ambientLight.intensity = 0.15;
+      hemiLight.intensity = 0.15;
+      hemiLight.groundColor.setHex(0x111111);
+      // Turn on lamps
+      lamps.forEach(lamp => {
+        lamp.light.intensity = 2.0;
+        lamp.mesh.material.emissiveIntensity = 1.0;
+      });
+      break;
+      
+    case 'dawn':
+      // Sunrise colors
+      t = (timeValue - 5) / 2; // 0 to 1
+      scene.background = new THREE.Color().lerpColors(
+        new THREE.Color(0x1a2332),
+        new THREE.Color(0xff9966),
+        t
+      );
+      scene.fog.color.copy(scene.background);
+      scene.fog.density = 0.0015;
+      sunLight.intensity = 0.3 + (t * 0.7);
+      sunLight.color.setHex(0xffaa66);
+      ambientLight.intensity = 0.2 + (t * 0.2);
+      hemiLight.intensity = 0.2 + (t * 0.3);
+      hemiLight.groundColor.setHex(0x332211);
+      // Gradually turn off lamps
+      lamps.forEach(lamp => {
+        lamp.light.intensity = 2.0 * (1 - t);
+        lamp.mesh.material.emissiveIntensity = 0.2 + (0.8 * (1 - t));
+      });
+      break;
+      
+    case 'day':
+      // Bright daylight
+      scene.background = new THREE.Color(0x87CEEB);
+      scene.fog.color.setHex(0x87CEEB);
+      scene.fog.density = 0.0008;
+      sunLight.intensity = 1.2;
+      sunLight.color.setHex(0xfff5e6);
+      ambientLight.intensity = 0.4;
+      hemiLight.intensity = 0.5;
+      hemiLight.groundColor.setHex(0x3d5c3d);
+      // Turn off lamps
+      lamps.forEach(lamp => {
+        lamp.light.intensity = 0;
+        lamp.mesh.material.emissiveIntensity = 0.2;
+      });
+      break;
+      
+    case 'dusk':
+      // Sunset colors
+      t = (timeValue - 17) / 2; // 0 to 1
+      scene.background = new THREE.Color().lerpColors(
+        new THREE.Color(0xff9966),
+        new THREE.Color(0x1a2332),
+        t
+      );
+      scene.fog.color.copy(scene.background);
+      scene.fog.density = 0.0015;
+      sunLight.intensity = 1.0 - (t * 0.7);
+      sunLight.color.setHex(0xff8844);
+      ambientLight.intensity = 0.4 - (t * 0.2);
+      hemiLight.intensity = 0.5 - (t * 0.3);
+      hemiLight.groundColor.setHex(0x332211);
+      // Gradually turn on lamps
+      lamps.forEach(lamp => {
+        lamp.light.intensity = 2.0 * t;
+        lamp.mesh.material.emissiveIntensity = 0.2 + (0.8 * t);
+      });
+      break;
+      
+    case 'evening':
+      // Early night
+      scene.background = new THREE.Color(0x0a1020);
+      scene.fog.color.setHex(0x0a1020);
+      scene.fog.density = 0.0018;
+      sunLight.intensity = 0.25;
+      sunLight.color.setHex(0x9999ff);
+      ambientLight.intensity = 0.18;
+      hemiLight.intensity = 0.18;
+      hemiLight.groundColor.setHex(0x111122);
+      // Lamps fully on
+      lamps.forEach(lamp => {
+        lamp.light.intensity = 2.0;
+        lamp.mesh.material.emissiveIntensity = 1.0;
+      });
+      break;
   }
 }
 
-if (dayNightBtn) {
-  dayNightBtn.addEventListener('click', toggleDayNight);
+const sunSlider = document.getElementById('sun-slider');
+const timePlayPauseBtn = document.getElementById('time-play-pause');
+
+if (sunSlider) {
+  sunSlider.addEventListener('input', (e) => {
+    const timeValue = parseFloat(e.target.value);
+    gameState.currentTime = timeValue;
+    updateSunPosition(timeValue);
+  });
+  // Initialize sun position
+  gameState.currentTime = 12;
+  updateSunPosition(gameState.currentTime);
+}
+
+if (timePlayPauseBtn) {
+  timePlayPauseBtn.addEventListener('click', () => {
+    gameState.timeAutoPlay = !gameState.timeAutoPlay;
+    timePlayPauseBtn.textContent = gameState.timeAutoPlay ? '⏸️' : '▶️';
+    timePlayPauseBtn.title = gameState.timeAutoPlay ? 'Pause Time' : 'Play Time';
+  });
 }
 
 function showCharacterSelection() {
@@ -1891,7 +2065,8 @@ function updateMinimap() {
     borobudur: '#8B8B7A',
     prambanan: '#8B4513',
     lempuyang: '#6B6B5A',
-    batur: '#2E8B8B'
+    batur: '#2E8B8B',
+    candiparit: '#A0826D'
   };
   
   Object.entries(landmarks).forEach(([key, landmark]) => {
@@ -2017,6 +2192,24 @@ function animate() {
   requestAnimationFrame(animate);
   
   const delta = clock.getDelta();
+  
+  // Auto-increment time (5 minutes for full 24h cycle)
+  if (gameState.timeAutoPlay && gameState.status === 'playing') {
+    const timeIncrement = (24 / gameState.timeCycleDuration) * delta;
+    gameState.currentTime += timeIncrement;
+    
+    // Wrap around after 24 hours
+    if (gameState.currentTime >= 24) {
+      gameState.currentTime -= 24;
+    }
+    
+    // Update sun position and slider
+    updateSunPosition(gameState.currentTime);
+    const sunSlider = document.getElementById('sun-slider');
+    if (sunSlider) {
+      sunSlider.value = gameState.currentTime;
+    }
+  }
   
   if (gameState.status === 'playing') {
     // Update player

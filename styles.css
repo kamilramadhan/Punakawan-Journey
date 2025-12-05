@@ -337,6 +337,110 @@ body {
   color: #000;
 }
 
+/* Sun Position Control */
+.sun-control {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.6rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sun-label {
+  font-size: 0.9rem;
+  color: var(--text-light);
+  font-weight: 600;
+}
+
+.sun-slider {
+  width: 150px;
+  height: 6px;
+  background: linear-gradient(90deg, 
+    #001f3f 0%,    /* Midnight */
+    #1e3a5f 12.5%, /* Dawn */
+    #ff6b35 25%,   /* Sunrise */
+    #ffd700 37.5%, /* Morning */
+    #87ceeb 50%,   /* Noon */
+    #ffd700 62.5%, /* Afternoon */
+    #ff6b35 75%,   /* Sunset */
+    #1e3a5f 87.5%, /* Dusk */
+    #001f3f 100%   /* Night */
+  );
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+
+.sun-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd700, #ff8c00);
+  border: 2px solid #fff;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sun-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 15px rgba(255, 215, 0, 1);
+}
+
+.sun-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd700, #ff8c00);
+  border: 2px solid #fff;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sun-slider::-moz-range-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 15px rgba(255, 215, 0, 1);
+}
+
+.time-display {
+  font-size: 0.9rem;
+  color: var(--text-light);
+  font-weight: 600;
+  min-width: 50px;
+  text-align: center;
+}
+
+.time-btn {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: var(--text-light);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.time-btn:hover {
+  background: rgba(255, 215, 0, 0.3);
+  border-color: rgba(255, 215, 0, 0.6);
+  transform: scale(1.05);
+}
+
+.time-btn:active {
+  transform: scale(0.95);
+}
+
 .hud-bottom {
   position: absolute;
   bottom: 2rem;

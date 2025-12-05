@@ -51,7 +51,12 @@
         <div class="location-info">
           <span id="location-name">Borobudur Temple</span>
         </div>
-        <button id="day-night-btn" class="hud-btn" title="Toggle Day/Night">☀️</button>
+        <div class="sun-control">
+          <label for="sun-slider" class="sun-label">🌅 Posisi Matahari</label>
+          <input type="range" id="sun-slider" min="0" max="24" step="0.01" value="12" class="sun-slider">
+          <span id="time-display" class="time-display">12:00</span>
+          <button id="time-play-pause" class="time-btn" title="Play/Pause Time">⏸️</button>
+        </div>
         <button id="menu-btn" class="hud-btn">☰</button>
       </div>
       

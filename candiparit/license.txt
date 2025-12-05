@@ -1,0 +1,11 @@
+Model Information:
+* title:	Candi Apit
+* source:	https://sketchfab.com/3d-models/candi-apit-be4a9fe23f5a483e8e79093565ea4155
+* author:	dekahobby (https://sketchfab.com/dekahobby)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Candi Apit" (https://sketchfab.com/3d-models/candi-apit-be4a9fe23f5a483e8e79093565ea4155) by dekahobby (https://sketchfab.com/dekahobby) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
