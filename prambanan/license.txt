@@ -1,0 +1,11 @@
+Model Information:
+* title:	Candi Prambanan
+* source:	https://sketchfab.com/3d-models/candi-prambanan-2707fac7e21a4f76b73a02997a3d1d97
+* author:	alterego.visual (https://sketchfab.com/alterego.visual)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Candi Prambanan" (https://sketchfab.com/3d-models/candi-prambanan-2707fac7e21a4f76b73a02997a3d1d97) by alterego.visual (https://sketchfab.com/alterego.visual) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

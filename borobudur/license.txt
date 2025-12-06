@@ -1,0 +1,11 @@
+Model Information:
+* title:	Borobudur-2
+* source:	https://sketchfab.com/3d-models/borobudur-2-f8ff817ab5484d7f93242b5844174d2c
+* author:	trigoesema (https://sketchfab.com/trigoesema)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Borobudur-2" (https://sketchfab.com/3d-models/borobudur-2-f8ff817ab5484d7f93242b5844174d2c) by trigoesema (https://sketchfab.com/trigoesema) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

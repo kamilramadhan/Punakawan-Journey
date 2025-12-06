@@ -351,7 +351,8 @@ scene.fog = new THREE.FogExp2(0x87CEEB, 0.0008); // Reduced fog for larger world
 
 // Perspective camera for 3D world - extended far plane
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 3000);
-camera.position.set(0, 15, 100);
+// ★ POSISI SPAWN KAMERA - Kamera di belakang karakter
+camera.position.set(0, 15, 30);
 
 // ===== LIGHTING =====
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
@@ -477,11 +478,16 @@ function createWorld() {
   ground.geometry.computeVertexNormals();
 
   // Create all landmarks
-  createBorobudurTemple(0, 0);
-  createPrambananTemple(200, 200);
-  createLempuyangTemple(-200, 200);
-  createDanauBatur(0, -250);
-  loadCandiParit(150, -150);
+  // Layout: Karakter di tengah (0, 0)
+  // Utara (Z positif): Gerbang Trowulan
+  // Timur (X positif): Candi Cetho  
+  // Barat (X negatif): Candi Parit
+  // Selatan (Z negatif): Prambanan & Borobudur
+  createGerbangTrowulan(0, 300);        // Utara, 100 meter
+  createCandiCetho(300, 0);             // Timur, 100 meter
+  loadCandiParit(-300, 0);              // Barat, 100 meter
+  createPrambananTemple(-200, -300);     // Selatan kiri, 100 meter
+  createBorobudurTemple(200, -300);      // Selatan kanan, 100 meter
 
   // Create paths connecting landmarks
   createAllPaths();
@@ -499,142 +505,100 @@ function createWorld() {
   createPOIMarkers();
 }
 
-// ===== BOROBUDUR TEMPLE =====
-function createBorobudurTemple(offsetX, offsetZ) {
-  const templeGroup = new THREE.Group();
-  templeGroup.position.set(offsetX, 0, offsetZ);
-
-  // Base platform (Kamadhatu)
-  const baseSize = 60;
-  const baseHeight = 2;
-  const baseGeom = new THREE.BoxGeometry(baseSize, baseHeight, baseSize);
-  const base = new THREE.Mesh(baseGeom, stoneMaterial);
-  base.position.y = baseHeight / 2;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  templeGroup.add(base);
+// ===== CANDI CETHO =====
+function createCandiCetho(offsetX, offsetZ) {
+  // Load 3D GLTF model instead of procedural geometry
+  const loader = new GLTFLoader();
   
-  // Add collision for base
-  addCollisionBox(offsetX, offsetZ, baseSize + 4, baseSize + 4);
-
-  // Create stepped pyramid levels (Rupadhatu)
-  const levels = 5;
-  for (let i = 0; i < levels; i++) {
-    const levelSize = baseSize - (i + 1) * 8;
-    const levelHeight = 3;
-    const levelGeom = new THREE.BoxGeometry(levelSize, levelHeight, levelSize);
-    const level = new THREE.Mesh(levelGeom, stoneMaterial);
-    level.position.y = baseHeight + (i + 1) * levelHeight - levelHeight / 2;
-    level.castShadow = true;
-    level.receiveShadow = true;
-    templeGroup.add(level);
-
-    // Add small stupas on each level
-    const stupaCount = 8 - i;
-    for (let j = 0; j < stupaCount; j++) {
-      const angle = (j / stupaCount) * Math.PI * 2;
-      const radius = levelSize / 2 - 2;
-      const stupa = createStupa(1.5);
-      stupa.position.set(
-        Math.cos(angle) * radius,
-        baseHeight + (i + 1) * levelHeight,
-        Math.sin(angle) * radius
-      );
-      templeGroup.add(stupa);
+  loader.load(
+    './candicetho/scene.gltf',
+    function (gltf) {
+      const model = gltf.scene;
+      
+      // Get terrain height at this position
+      const terrainY = getTerrainHeight(offsetX, offsetZ);
+      
+      // ★ POSISI KETINGGIAN CANDI CETHO - Ubah angka untuk menyesuaikan ketinggian
+      // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
+      const heightOffset = 50; // Sesuaikan nilai ini jika masih melayang
+      
+      // Position the model on the terrain
+      model.position.set(offsetX, terrainY + heightOffset, offsetZ);
+      
+      // Scale the model (adjust as needed based on visual appearance)
+      model.scale.set(7, 7, 7);
+      
+      // Enable shadows for all meshes in the model
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      
+      // Add to scene
+      scene.add(model);
+      
+      console.log('Candi Cetho 3D model loaded successfully');
+    },
+    function (xhr) {
+      console.log('Candi Cetho: ' + (xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    function (error) {
+      console.error('Error loading Candi Cetho model:', error);
     }
-  }
-
-  // Create circular platforms (Arupadhatu)
-  const circularLevels = 3;
-  const topY = baseHeight + levels * 3;
-  for (let i = 0; i < circularLevels; i++) {
-    const radius = 15 - i * 4;
-    const circleGeom = new THREE.CylinderGeometry(radius, radius, 1.5, 32);
-    const circle = new THREE.Mesh(circleGeom, stoneMaterial);
-    circle.position.y = topY + i * 2;
-    circle.castShadow = true;
-    circle.receiveShadow = true;
-    templeGroup.add(circle);
-
-    // Add perforated stupas
-    const perfStupaCount = 16 - i * 4;
-    for (let j = 0; j < perfStupaCount; j++) {
-      const angle = (j / perfStupaCount) * Math.PI * 2;
-      const stupaRadius = radius - 2;
-      const perfStupa = createPerforatedStupa(2);
-      perfStupa.position.set(
-        Math.cos(angle) * stupaRadius,
-        topY + i * 2 + 1,
-        Math.sin(angle) * stupaRadius
-      );
-      templeGroup.add(perfStupa);
-    }
-  }
-
-  // Main stupa at top
-  const mainStupa = createMainStupa();
-  mainStupa.position.y = topY + circularLevels * 2 + 2;
-  templeGroup.add(mainStupa);
-
-  scene.add(templeGroup);
+  );
+  
+  // Add collision box around the model
+  addCollisionBox(offsetX, offsetZ, 64, 64);
 }
 
 // ===== PRAMBANAN TEMPLE =====
 function createPrambananTemple(offsetX, offsetZ) {
-  const templeGroup = new THREE.Group();
-  templeGroup.position.set(offsetX, 0, offsetZ);
-
-  // Base platform
-  const platformSize = 80;
-  const platformGeom = new THREE.BoxGeometry(platformSize, 2, platformSize);
-  const platform = new THREE.Mesh(platformGeom, darkStoneMaterial);
-  platform.position.y = 1;
-  platform.receiveShadow = true;
-  templeGroup.add(platform);
+  // Load 3D GLTF model instead of procedural geometry
+  const loader = new GLTFLoader();
   
-  // Add collision for platform
-  addCollisionBox(offsetX, offsetZ, platformSize + 4, platformSize + 4);
-
-  // Main temples (Trimurti)
-  const templePositions = [
-    { x: 0, z: 0, height: 47, name: 'Siwa' },      // Center - tallest
-    { x: -15, z: 0, height: 33, name: 'Brahma' },  // South
-    { x: 15, z: 0, height: 33, name: 'Wisnu' },    // North
-  ];
-
-  templePositions.forEach(pos => {
-    const temple = createPrambananSpire(pos.height);
-    temple.position.set(pos.x, 2, pos.z);
-    templeGroup.add(temple);
-  });
-
-  // Wahana temples (smaller, facing main temples)
-  const wahanaPositions = [
-    { x: 0, z: 15, height: 22 },   // Nandi (facing Siwa)
-    { x: -15, z: 15, height: 18 }, // Angsa (facing Brahma)
-    { x: 15, z: 15, height: 18 },  // Garuda (facing Wisnu)
-  ];
-
-  wahanaPositions.forEach(pos => {
-    const temple = createPrambananSpire(pos.height);
-    temple.position.set(pos.x, 2, pos.z);
-    templeGroup.add(temple);
-  });
-
-  // Smaller perwara temples around
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    const radius = 35;
-    const smallTemple = createPrambananSpire(8);
-    smallTemple.position.set(
-      Math.cos(angle) * radius,
-      2,
-      Math.sin(angle) * radius
-    );
-    templeGroup.add(smallTemple);
-  }
-
-  scene.add(templeGroup);
+  loader.load(
+    './prambanan/scene.gltf',
+    function (gltf) {
+      const model = gltf.scene;
+      
+      // Get terrain height at this position
+      const terrainY = getTerrainHeight(offsetX, offsetZ);
+      
+      // ★ POSISI KETINGGIAN PRAMBANAN - Ubah angka -6 untuk menyesuaikan ketinggian
+      // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
+      const heightOffset = 50; // Sesuaikan nilai ini jika masih melayang
+      
+      // Position the model on the terrain
+      model.position.set(offsetX, terrainY + heightOffset, offsetZ);
+      
+      // Scale the model (adjust as needed based on visual appearance)
+      model.scale.set(200, 200, 200);
+      
+      // Enable shadows for all meshes in the model
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      
+      // Add to scene
+      scene.add(model);
+      
+      console.log('Prambanan 3D model loaded successfully');
+    },
+    function (xhr) {
+      console.log('Prambanan: ' + (xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    function (error) {
+      console.error('Error loading Prambanan model:', error);
+    }
+  );
+  
+  // Add collision box around the model
+  addCollisionBox(offsetX, offsetZ, 80, 80);
 }
 
 function createPrambananSpire(height) {
@@ -679,67 +643,52 @@ function createPrambananSpire(height) {
 }
 
 // ===== LEMPUYANG TEMPLE =====
-function createLempuyangTemple(offsetX, offsetZ) {
-  const templeGroup = new THREE.Group();
-  templeGroup.position.set(offsetX, 0, offsetZ);
-
-  // Steps leading up
-  const stepsCount = 10;
-  for (let i = 0; i < stepsCount; i++) {
-    const stepGeom = new THREE.BoxGeometry(12, 0.5, 3);
-    const step = new THREE.Mesh(stepGeom, stoneMaterial);
-    step.position.set(0, i * 0.5, 20 - i * 2);
-    step.receiveShadow = true;
-    step.castShadow = true;
-    templeGroup.add(step);
-  }
-
-  // Main platform
-  const platformGeom = new THREE.BoxGeometry(40, 1, 30);
-  const platform = new THREE.Mesh(platformGeom, stoneMaterial);
-  platform.position.set(0, stepsCount * 0.5, -5);
-  platform.receiveShadow = true;
-  templeGroup.add(platform);
+// ===== GERBANG TROWULAN =====
+function createGerbangTrowulan(offsetX, offsetZ) {
+  // Load 3D GLTF model instead of procedural geometry
+  const loader = new GLTFLoader();
   
-  // Add collision
-  addCollisionBox(offsetX, offsetZ - 5, 44, 34);
-
-  // Gates of Heaven (Candi Bentar)
-  const gateHeight = 15;
-  const gateWidth = 4;
-  const gateDepth = 3;
-
-  // Left gate
-  const leftGateGroup = createGatePart(gateHeight, gateWidth, gateDepth);
-  leftGateGroup.position.set(-5, stepsCount * 0.5 + gateHeight / 2, -5);
-  templeGroup.add(leftGateGroup);
-
-  // Right gate
-  const rightGateGroup = createGatePart(gateHeight, gateWidth, gateDepth);
-  rightGateGroup.position.set(5, stepsCount * 0.5 + gateHeight / 2, -5);
-  rightGateGroup.scale.x = -1;
-  templeGroup.add(rightGateGroup);
-
-  // Meru towers on sides
-  const meruLeft = createMeru(8);
-  meruLeft.position.set(-18, stepsCount * 0.5 + 0.5, -10);
-  templeGroup.add(meruLeft);
-
-  const meruRight = createMeru(8);
-  meruRight.position.set(18, stepsCount * 0.5 + 0.5, -10);
-  templeGroup.add(meruRight);
-
-  // Guardian statues
-  const guardianLeft = createGuardianStatue();
-  guardianLeft.position.set(-12, stepsCount * 0.5 + 0.5, 5);
-  templeGroup.add(guardianLeft);
-
-  const guardianRight = createGuardianStatue();
-  guardianRight.position.set(12, stepsCount * 0.5 + 0.5, 5);
-  guardianRight.scale.x = -1;
-  templeGroup.add(guardianRight);
-
-  scene.add(templeGroup);
+  loader.load(
+    './gerbang/scene.gltf',
+    function (gltf) {
+      const model = gltf.scene;
+      
+      // Get terrain height at this position
+      const terrainY = getTerrainHeight(offsetX, offsetZ);
+      
+      // ★ POSISI KETINGGIAN GERBANG TROWULAN - Ubah angka untuk menyesuaikan ketinggian
+      // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
+      const heightOffset = 0; // Sesuaikan nilai ini jika masih melayang
+      
+      // Position the model on the terrain
+      model.position.set(offsetX, terrainY + heightOffset, offsetZ);
+      
+      // Scale the model (adjust as needed based on visual appearance)
+      model.scale.set(12, 12, 12);
+      
+      // Enable shadows for all meshes in the model
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      
+      // Add to scene
+      scene.add(model);
+      
+      console.log('Gerbang Trowulan 3D model loaded successfully');
+    },
+    function (xhr) {
+      console.log('Gerbang Trowulan: ' + (xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    function (error) {
+      console.error('Error loading Gerbang Trowulan model:', error);
+    }
+  );
+  
+  // Add collision box around the model
+  addCollisionBox(offsetX, offsetZ, 44, 34);
 }
 
 function createGatePart(height, width, depth) {
@@ -821,114 +770,53 @@ function createGuardianStatue() {
   return group;
 }
 
-// ===== DANAU BATUR =====
-function createDanauBatur(offsetX, offsetZ) {
-  const lakeGroup = new THREE.Group();
-  lakeGroup.position.set(offsetX, 0, offsetZ);
-
-  // Lake (large circular)
-  const lakeRadius = 60;
-  const lakeGeom = new THREE.CircleGeometry(lakeRadius, 64);
-  const lake = new THREE.Mesh(lakeGeom, waterMaterial);
-  lake.rotation.x = -Math.PI / 2;
-  lake.position.y = 0.1;
-  lakeGroup.add(lake);
-
-  // Caldera rim (mountains around)
-  const rimSegments = 24;
-  for (let i = 0; i < rimSegments; i++) {
-    const angle = (i / rimSegments) * Math.PI * 2;
-    const rimRadius = lakeRadius + 15 + Math.random() * 10;
-    const mountainHeight = 15 + Math.random() * 20;
-    
-    const mountainGeom = new THREE.ConeGeometry(12, mountainHeight, 6);
-    const mountainMat = new THREE.MeshStandardMaterial({ 
-      color: new THREE.Color().setHSL(0.3, 0.3, 0.3 + Math.random() * 0.1),
-      roughness: 0.9 
-    });
-    const mountain = new THREE.Mesh(mountainGeom, mountainMat);
-    mountain.position.set(
-      Math.cos(angle) * rimRadius,
-      mountainHeight / 2 - 5,
-      Math.sin(angle) * rimRadius
-    );
-    mountain.castShadow = true;
-    lakeGroup.add(mountain);
-  }
-
-  // Gunung Batur (active volcano) - one prominent peak
-  const volcanoGeom = new THREE.ConeGeometry(25, 45, 8);
-  const volcanoMat = new THREE.MeshStandardMaterial({ color: 0x3d3d3d, roughness: 0.85 });
-  const volcano = new THREE.Mesh(volcanoGeom, volcanoMat);
-  volcano.position.set(40, 17, -30);
-  volcano.castShadow = true;
-  lakeGroup.add(volcano);
+// ===== BOROBUDUR TEMPLE =====
+function createBorobudurTemple(offsetX, offsetZ) {
+  // Load 3D GLTF model instead of procedural geometry
+  const loader = new GLTFLoader();
   
-  // Add collision for volcano
-  addCollisionBox(offsetX + 40, offsetZ - 30, 50, 50);
-
-  // Crater at top
-  const craterGeom = new THREE.CylinderGeometry(8, 5, 5, 8, 1, true);
-  const craterMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, side: THREE.DoubleSide });
-  const crater = new THREE.Mesh(craterGeom, craterMat);
-  crater.position.set(40, 40, -30);
-  lakeGroup.add(crater);
-
-  // Smoke particles (simple representation)
-  const smokeGeom = new THREE.SphereGeometry(3, 8, 8);
-  const smokeMat = new THREE.MeshBasicMaterial({ 
-    color: 0xcccccc, 
-    transparent: true, 
-    opacity: 0.4 
-  });
-  for (let i = 0; i < 5; i++) {
-    const smoke = new THREE.Mesh(smokeGeom, smokeMat.clone());
-    smoke.position.set(
-      40 + (Math.random() - 0.5) * 5,
-      42 + i * 3,
-      -30 + (Math.random() - 0.5) * 5
-    );
-    smoke.userData.isSmoke = true;
-    smoke.userData.baseY = smoke.position.y;
-    lakeGroup.add(smoke);
-  }
-
-  // Pura Ulun Danu Batur (temple on rim)
-  const puraGroup = new THREE.Group();
-  puraGroup.position.set(-50, 5, 40);
-
-  const puraBase = new THREE.BoxGeometry(15, 2, 10);
-  const puraBaseMesh = new THREE.Mesh(puraBase, stoneMaterial);
-  puraBaseMesh.position.y = 1;
-  puraGroup.add(puraBaseMesh);
-
-  const puraMeru = createMeru(12);
-  puraMeru.position.set(0, 2, 0);
-  puraGroup.add(puraMeru);
-
-  lakeGroup.add(puraGroup);
+  loader.load(
+    './borobudur/scene.gltf',
+    function (gltf) {
+      const model = gltf.scene;
+      
+      // Get terrain height at this position
+      const terrainY = getTerrainHeight(offsetX, offsetZ);
+      
+      // ★ POSISI KETINGGIAN BOROBUDUR - Ubah angka untuk menyesuaikan ketinggian
+      // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
+      const heightOffset = 50; // Sesuaikan nilai ini jika masih melayang
+      
+      // Position the model on the terrain
+      model.position.set(offsetX, terrainY + heightOffset, offsetZ);
+      
+      // ★ UKURAN MODEL BOROBUDUR - Ubah angka untuk memperbesar/memperkecil
+      // Scale the model (adjust as needed based on visual appearance)
+      model.scale.set(200, 200, 200); // Diperbesar dari 12 ke 50
+      
+      // Enable shadows for all meshes in the model
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      
+      // Add to scene
+      scene.add(model);
+      
+      console.log('Borobudur 3D model loaded successfully');
+    },
+    function (xhr) {
+      console.log('Borobudur: ' + (xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    function (error) {
+      console.error('Error loading Borobudur model:', error);
+    }
+  );
   
-  // Add collision for pura
-  addCollisionBox(offsetX - 50, offsetZ + 40, 20, 15);
-
-  // Small boats on lake
-  for (let i = 0; i < 5; i++) {
-    const boat = createBoat();
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 20 + Math.random() * 30;
-    boat.position.set(
-      Math.cos(angle) * radius,
-      0.3,
-      Math.sin(angle) * radius
-    );
-    boat.rotation.y = angle + Math.PI / 2;
-    boat.userData.isBoat = true;
-    boat.userData.angle = angle;
-    boat.userData.radius = radius;
-    lakeGroup.add(boat);
-  }
-
-  scene.add(lakeGroup);
+  // Add collision box around the model
+  addCollisionBox(offsetX, offsetZ, 120, 120);
 }
 
 // ===== CANDI PARIT (3D GLTF MODEL) =====
@@ -940,8 +828,15 @@ function loadCandiParit(offsetX, offsetZ) {
     function (gltf) {
       const model = gltf.scene;
       
-      // Position the model
-      model.position.set(offsetX, 0, offsetZ);
+      // Get terrain height at this position
+      const terrainY = getTerrainHeight(offsetX, offsetZ);
+      
+      // ★ POSISI KETINGGIAN CANDI - Ubah angka -6 untuk menyesuaikan ketinggian
+      // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
+      const heightOffset = -70; // Sesuaikan nilai ini jika masih melayang
+      
+      // Position the model on the terrain
+      model.position.set(offsetX, terrainY + heightOffset, offsetZ);
       
       // Scale the model (adjust as needed based on visual appearance)
       model.scale.set(12, 12, 12);
@@ -1445,7 +1340,8 @@ function createPOIMarkers() {
 // ===== PLAYER (2D SPRITE IN 3D WORLD) =====
 class Player {
   constructor() {
-    this.position = new THREE.Vector3(0, 0, 80);
+    // ★ POSISI SPAWN PLAYER - Karakter di tengah map
+    this.position = new THREE.Vector3(0, 0, 0);
     this.velocity = new THREE.Vector3();
     this.rotation = 0;
     this.speed = 18;
