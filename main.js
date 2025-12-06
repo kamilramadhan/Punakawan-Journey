@@ -57,30 +57,30 @@ const characterData = {
 
 // ===== LANDMARK LOCATIONS =====
 const landmarks = {
-  borobudur: {
-    position: { x: 0, y: 0, z: 0 },
-    name: 'Candi Borobudur',
+  gerbangTrowulan: {
+    position: { x: 0, y: 0, z: 300 },
+    name: 'Gerbang Trowulan',
+    color: 0x708090
+  },
+  candiCetho: {
+    position: { x: 300, y: 0, z: 0 },
+    name: 'Candi Cetho',
     color: 0x8B8B7A
   },
+  candiParit: {
+    position: { x: -300, y: 0, z: 0 },
+    name: 'Candi Parit',
+    color: 0xA0826D
+  },
   prambanan: {
-    position: { x: 200, y: 0, z: 200 },
+    position: { x: -200, y: 0, z: -300 },
     name: 'Candi Prambanan',
     color: 0x9B7653
   },
-  lempuyang: {
-    position: { x: -200, y: 0, z: 200 },
-    name: 'Pura Lempuyang',
-    color: 0x708090
-  },
-  batur: {
-    position: { x: 0, y: 0, z: -250 },
-    name: 'Danau Batur',
+  borobudur: {
+    position: { x: 200, y: 0, z: -300 },
+    name: 'Candi Borobudur',
     color: 0x4682B4
-  },
-  candiparit: {
-    position: { x: 150, y: 0, z: -150 },
-    name: 'Candi Parit',
-    color: 0xA0826D
   }
 };
 
@@ -520,7 +520,7 @@ function createCandiCetho(offsetX, offsetZ) {
       
       // ★ POSISI KETINGGIAN CANDI CETHO - Ubah angka untuk menyesuaikan ketinggian
       // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
-      const heightOffset = 50; // Sesuaikan nilai ini jika masih melayang
+      const heightOffset = 38; // Sesuaikan nilai ini jika masih melayang
       
       // Position the model on the terrain
       model.position.set(offsetX, terrainY + heightOffset, offsetZ);
@@ -568,7 +568,7 @@ function createPrambananTemple(offsetX, offsetZ) {
       
       // ★ POSISI KETINGGIAN PRAMBANAN - Ubah angka -6 untuk menyesuaikan ketinggian
       // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
-      const heightOffset = 50; // Sesuaikan nilai ini jika masih melayang
+      const heightOffset = 80; // Sesuaikan nilai ini jika masih melayang
       
       // Position the model on the terrain
       model.position.set(offsetX, terrainY + heightOffset, offsetZ);
@@ -658,7 +658,7 @@ function createGerbangTrowulan(offsetX, offsetZ) {
       
       // ★ POSISI KETINGGIAN GERBANG TROWULAN - Ubah angka untuk menyesuaikan ketinggian
       // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
-      const heightOffset = 0; // Sesuaikan nilai ini jika masih melayang
+      const heightOffset = 10; // Sesuaikan nilai ini jika masih melayang
       
       // Position the model on the terrain
       model.position.set(offsetX, terrainY + heightOffset, offsetZ);
@@ -785,7 +785,7 @@ function createBorobudurTemple(offsetX, offsetZ) {
       
       // ★ POSISI KETINGGIAN BOROBUDUR - Ubah angka untuk menyesuaikan ketinggian
       // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
-      const heightOffset = 50; // Sesuaikan nilai ini jika masih melayang
+      const heightOffset = 40; // Sesuaikan nilai ini jika masih melayang
       
       // Position the model on the terrain
       model.position.set(offsetX, terrainY + heightOffset, offsetZ);
@@ -1901,11 +1901,47 @@ function togglePause() {
 }
 
 function handleInteraction() {
-  // Check for nearby POI
+  // Check for nearby landmark first (for fighting game)
+  const nearbyLandmark = findNearbyLandmark();
+  if (nearbyLandmark) {
+    enterFightingGame(nearbyLandmark);
+    return;
+  }
+  
+  // Check for nearby POI (for information)
   const nearbyPOI = findNearbyPOI();
   if (nearbyPOI) {
     showInfoPanel(nearbyPOI);
   }
+}
+
+function findNearbyLandmark() {
+  const interactionDistance = 100; // 100 meter radius untuk interaksi dengan bangunan
+  
+  for (const [key, landmark] of Object.entries(landmarks)) {
+    const dx = player.position.x - landmark.position.x;
+    const dz = player.position.z - landmark.position.z;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+    
+    if (distance < interactionDistance) {
+      return { key, ...landmark };
+    }
+  }
+  return null;
+}
+
+function enterFightingGame(landmark) {
+  console.log('Entering fighting game at:', landmark.name);
+  
+  // Save current game state to return later (optional)
+  localStorage.setItem('virtualTourReturnPoint', JSON.stringify({
+    character: gameState.selectedCharacter,
+    position: { x: player.position.x, y: player.position.y, z: player.position.z },
+    landmark: landmark.name
+  }));
+  
+  // Navigate to fighting game in the same tab
+  window.location.href = '../Wayang-Fighting-Game/index.html';
 }
 
 function findNearbyPOI() {
@@ -1938,8 +1974,19 @@ function closeInfoPanelFn() {
 }
 
 function updateInteractionPrompt() {
+  if (gameState.status !== 'playing') {
+    interactionPrompt.style.display = 'none';
+    return;
+  }
+  
+  const nearbyLandmark = findNearbyLandmark();
   const nearbyPOI = findNearbyPOI();
-  if (nearbyPOI && gameState.status === 'playing') {
+  
+  if (nearbyLandmark) {
+    interactionPrompt.textContent = `Tekan E - Masuk ke Arena ${nearbyLandmark.name}`;
+    interactionPrompt.style.display = 'block';
+  } else if (nearbyPOI) {
+    interactionPrompt.textContent = 'Tekan E - Lihat Informasi';
     interactionPrompt.style.display = 'block';
   } else {
     interactionPrompt.style.display = 'none';
