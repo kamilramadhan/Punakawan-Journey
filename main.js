@@ -1933,15 +1933,16 @@ function findNearbyLandmark() {
 function enterFightingGame(landmark) {
   console.log('Entering fighting game at:', landmark.name);
   
-  // Save current game state to return later (optional)
+  // Save current game state to return later
   localStorage.setItem('virtualTourReturnPoint', JSON.stringify({
     character: gameState.selectedCharacter,
     position: { x: player.position.x, y: player.position.y, z: player.position.z },
-    landmark: landmark.name
+    landmark: landmark.name,
+    currentTime: gameState.currentTime
   }));
   
-  // Navigate to fighting game in the same tab
-  window.location.href = '../Wayang-Fighting-Game/index.html';
+  // Navigate to fighting game (dalam folder yang sama dengan index.html)
+  window.location.href = './fighting.html';
 }
 
 function findNearbyPOI() {
