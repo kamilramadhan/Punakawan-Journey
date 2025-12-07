@@ -314,7 +314,6 @@ Punakawan muncul dalam adegan "Goro-goro" sebagai selingan humor sekaligus kriti
 
 // ===== DOM ELEMENTS =====
 const loadingScreen = document.getElementById('loading-screen');
-const loadingText = document.getElementById('loading-text');
 const charSelection = document.getElementById('char-selection');
 const charOptions = document.getElementById('char-options');
 const startExploreBtn = document.getElementById('start-explore-btn');
@@ -1647,9 +1646,10 @@ window.addEventListener('keydown', (e) => {
     handleInteraction();
   }
   
-  // Handle loading screen
+  // Handle loading screen - redirect to fighting game for character selection
   if (e.code === 'Enter' && gameState.status === 'loading') {
-    showCharacterSelection();
+    localStorage.removeItem('fightingGameMode'); // Clear any previous flag
+    window.location.href = './fighting.html';
   }
 });
 
@@ -1933,6 +1933,9 @@ function findNearbyLandmark() {
 function enterFightingGame(landmark) {
   console.log('Entering fighting game at:', landmark.name);
   
+  // Set flag to indicate coming from virtual tour
+  localStorage.setItem('fightingGameMode', 'fromVirtualTour');
+  
   // Save current game state to return later
   localStorage.setItem('virtualTourReturnPoint', JSON.stringify({
     character: gameState.selectedCharacter,
@@ -2124,10 +2127,20 @@ if (DEBUG_COLLISION) {
 // Initialize camera controller
 cameraController = new CameraController(camera, player.position);
 
-// Loading complete
-setTimeout(() => {
-  if (loadingText) loadingText.textContent = 'Tekan ENTER untuk mulai';
-}, 1500);
+// Check if returning from fighting game or initial character selection
+const characterSelected = localStorage.getItem('characterSelected');
+const selectedP1 = localStorage.getItem('selectedP1');
+
+if (characterSelected === 'true' && selectedP1) {
+  // Skip loading screen and go directly to game
+  console.log('[Virtual Tour] Character already selected:', selectedP1);
+  gameState.selectedCharacter = selectedP1;
+  loadingScreen.style.display = 'none';
+  startGame();
+} else {
+  // Show loading screen, wait for ENTER to go to fighting.html
+  // No need to update loadingText since we removed it from HTML
+}
 
 // ===== ANIMATION LOOP =====
 const clock = new THREE.Clock();

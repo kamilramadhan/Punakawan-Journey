@@ -1125,8 +1125,19 @@ function createCharacterSelectionUI() {
           // Re-show pause menu so user can continue (ensure state consistency)
           try { showPauseMenu(); } catch (e) {}
         } else {
-          // For normal flow, show dynamic map selection
-          try { showMapSelection(); } catch (err) { console.warn('[UI] showMapSelection failed', err); }
+          // Check if this is initial character selection (from loading) or from virtual tour
+          const fightingMode = localStorage.getItem('fightingGameMode');
+          
+          if (fightingMode === 'fromVirtualTour') {
+            // Coming from virtual tour (E key) - go to map selection
+            try { showMapSelection(); } catch (err) { console.warn('[UI] showMapSelection failed', err); }
+          } else {
+            // Initial character selection - go to virtual tour
+            localStorage.setItem('characterSelected', 'true');
+            localStorage.setItem('selectedP1', selectedCharacters[0] || 'bagong');
+            localStorage.setItem('selectedP2', selectedCharacters[1] || 'sengkuni');
+            window.location.href = './index.html';
+          }
         }
         }
     );
@@ -1211,7 +1222,7 @@ function showPauseMenu() {
     if (!el.dataset.wired) {
       el.querySelector('#pause-continue')?.addEventListener('click', () => { hidePauseMenu(); });
       el.querySelector('#pause-select')?.addEventListener('click', () => { hidePauseMenu(); openCharacterSelectionUI(); });
-      el.querySelector('#pause-exit')?.addEventListener('click', () => { hidePauseMenu(); returnToMenu(); try { window.location.href = './index.html'; } catch(e){} });
+      el.querySelector('#pause-exit')?.addEventListener('click', () => { hidePauseMenu(); returnToMenu(); localStorage.removeItem('fightingGameMode'); try { window.location.href = './index.html'; } catch(e){} });
       el.dataset.wired = '1';
     }
     return;
@@ -1231,7 +1242,7 @@ function showPauseMenu() {
   document.body.appendChild(created);
   created.querySelector('#pause-continue')?.addEventListener('click', () => { hidePauseMenu(); });
   created.querySelector('#pause-select')?.addEventListener('click', () => { hidePauseMenu(); openCharacterSelectionUI(); });
-  created.querySelector('#pause-exit')?.addEventListener('click', () => { hidePauseMenu(); returnToMenu(); try { window.location.href = './index.html'; } catch(e){} });
+  created.querySelector('#pause-exit')?.addEventListener('click', () => { hidePauseMenu(); returnToMenu(); localStorage.removeItem('fightingGameMode'); try { window.location.href = './index.html'; } catch(e){} });
   try { updateMusicForState(); } catch (e) {}
 }
 
@@ -1254,7 +1265,7 @@ function showHomeMenu() {
     el.style.display = 'flex';
     if (!el.dataset.wired) {
       el.querySelector('#home-rematch')?.addEventListener('click', () => { hideHomeMenu(); rematchGame(); });
-      el.querySelector('#home-quit')?.addEventListener('click', () => { hideHomeMenu(); returnToMenu(); try { window.location.href = './index.html'; } catch(e){} });
+      el.querySelector('#home-quit')?.addEventListener('click', () => { hideHomeMenu(); returnToMenu(); localStorage.removeItem('fightingGameMode'); try { window.location.href = './index.html'; } catch(e){} });
       el.querySelector('#home-cancel')?.addEventListener('click', () => { hideHomeMenu(); });
       el.dataset.wired = '1';
     }
@@ -1307,7 +1318,7 @@ function showEndMenu(winnerText) {
     if (!el.dataset.wired) {
       el.querySelector('#end-restart')?.addEventListener('click', () => { el.style.display='none'; startMatch(); });
       el.querySelector('#end-restart-change')?.addEventListener('click', () => { el.style.display='none'; openCharacterSelectionUI(); });
-      el.querySelector('#end-exit')?.addEventListener('click', () => { el.style.display='none'; returnToMenu(); try { window.location.href = './index.html'; } catch(e){} });
+      el.querySelector('#end-exit')?.addEventListener('click', () => { el.style.display='none'; returnToMenu(); localStorage.removeItem('fightingGameMode'); try { window.location.href = './index.html'; } catch(e){} });
       el.dataset.wired = '1';
     }
     return;
@@ -1329,7 +1340,7 @@ function showEndMenu(winnerText) {
   document.body.appendChild(created);
   created.querySelector('#end-restart')?.addEventListener('click', () => { created.remove(); startMatch(); });
   created.querySelector('#end-restart-change')?.addEventListener('click', () => { created.remove(); openCharacterSelectionUI(); });
-  created.querySelector('#end-exit')?.addEventListener('click', () => { created.remove(); returnToMenu(); try { window.location.href = './index.html'; } catch(e){} });
+  created.querySelector('#end-exit')?.addEventListener('click', () => { created.remove(); returnToMenu(); localStorage.removeItem('fightingGameMode'); try { window.location.href = './index.html'; } catch(e){} });
 }
 
 function hideEndMenu() { const el = document.getElementById('end-menu'); if (el) el.style.display = 'none'; }
@@ -1373,16 +1384,25 @@ function showClickTooltip(text = 'Memuat...', ms = 1100) {
   }, ms);
 }
 
-// Sembunyikan loading screen dan langsung tampilkan character selection
+// Auto-initialize based on flow
 (function(){
   const loadingScreen = document.getElementById('loading-screen');
+  const fightingMode = localStorage.getItem('fightingGameMode');
+  
   if (loadingScreen) { 
     loadingScreen.style.display = 'none';
   }
   
-  // Langsung tampilkan character selection untuk fighting game
   setTimeout(() => {
-    openCharacterSelectionUI();
+    if (fightingMode === 'fromVirtualTour') {
+      // Coming from virtual tour (E key) - skip character selection, go directly to map selection
+      console.log('[Fighting] Mode: From Virtual Tour - Opening Map Selection');
+      showMapSelection();
+    } else {
+      // Initial load or from menu - show character selection
+      console.log('[Fighting] Mode: Initial Load - Opening Character Selection');
+      openCharacterSelectionUI();
+    }
   }, 100);
 })();
 
