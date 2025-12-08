@@ -1339,7 +1339,7 @@ function createPOIMarkers() {
 // ===== PLAYER (2D SPRITE IN 3D WORLD) =====
 class Player {
   constructor() {
-    // ★ POSISI SPAWN PLAYER - Karakter di tengah map
+    // ★ POSISI SPAWN PLAYER - First-person view
     this.position = new THREE.Vector3(0, 0, 0);
     this.velocity = new THREE.Vector3();
     this.rotation = 0;
@@ -1351,87 +1351,20 @@ class Player {
     this.isMoving = false;
     this.isRunning = false;
     
-    // Animation
-    this.currentAnim = 'idle';
-    this.frameIndex = 0;
-    this.frameTimer = 0;
-    this.frameSpeed = 0.12;
-    
-    // Textures
-    this.idleTextures = [];
-    this.walkTextures = [];
-    
-    // Create sprite
-    this.mesh = null;
-    this.material = null;
-    
     // Player light (aura/lantern)
     this.light = new THREE.PointLight(0xffaa00, 1, 20);
     this.light.position.set(0, 5, 0);
     scene.add(this.light);
   }
 
-  async loadTextures(charName) {
-    const charData = characterData[charName];
-    if (!charData) return;
-
-    const loader = new THREE.TextureLoader();
-    
-    // Load idle textures
-    this.idleTextures = await Promise.all(
-      charData.idle.map(path => {
-        return new Promise(resolve => {
-          loader.load(path, tex => {
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.magFilter = THREE.NearestFilter;
-            tex.minFilter = THREE.NearestFilter;
-            resolve(tex);
-          }, undefined, () => resolve(null));
-        });
-      })
-    );
-    this.idleTextures = this.idleTextures.filter(t => t !== null);
-
-    // Load walk textures
-    this.walkTextures = await Promise.all(
-      charData.walk.map(path => {
-        return new Promise(resolve => {
-          loader.load(path, tex => {
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.magFilter = THREE.NearestFilter;
-            tex.minFilter = THREE.NearestFilter;
-            resolve(tex);
-          }, undefined, () => resolve(null));
-        });
-      })
-    );
-    this.walkTextures = this.walkTextures.filter(t => t !== null);
-
-    // Create sprite material and mesh
-    if (this.idleTextures.length > 0) {
-      this.material = new THREE.SpriteMaterial({
-        map: this.idleTextures[0],
-        transparent: true
-      });
-      
-      this.mesh = new THREE.Sprite(this.material);
-      this.mesh.scale.set(4, 5, 1);
-      this.mesh.position.copy(this.position);
-      this.mesh.position.y += 2.5;
-      scene.add(this.mesh);
-    }
-  }
-
   update(delta, keys, cameraAngle) {
-    if (!this.mesh) return;
-
     // Movement input
     let moveX = 0;
     let moveZ = 0;
     this.isMoving = false;
     this.isRunning = keys['ShiftLeft'] || keys['ShiftRight'];
 
-    // Get input direction (relative to screen)
+    // Get input direction (relative to camera view)
     if (keys['KeyW'] || keys['ArrowUp']) { moveZ = -1; this.isMoving = true; }
     if (keys['KeyS'] || keys['ArrowDown']) { moveZ = 1; this.isMoving = true; }
     if (keys['KeyA'] || keys['ArrowLeft']) { moveX = -1; this.isMoving = true; }
@@ -1444,28 +1377,18 @@ class Player {
       moveZ *= factor;
     }
 
-    // Transform movement direction based on camera orientation
+    // Transform movement direction based on camera orientation (first-person)
     if (this.isMoving) {
-      // Camera angle is the horizontal rotation of the camera
       const sin = Math.sin(cameraAngle);
       const cos = Math.cos(cameraAngle);
       
-      // Transform input to world space based on camera direction
-      // W = forward (negative Z in camera space) -> towards where camera is looking
-      // S = backward (positive Z in camera space)
-      // A = left (negative X in camera space)
-      // D = right (positive X in camera space)
+      // Transform to world space - camera-relative movement
       const worldX = moveX * cos + moveZ * sin;
       const worldZ = -moveX * sin + moveZ * cos;
       
       const currentSpeed = this.isRunning ? this.runSpeed : this.speed;
       this.velocity.x = worldX * currentSpeed;
       this.velocity.z = worldZ * currentSpeed;
-
-      // Face the direction of movement
-      if (Math.abs(worldX) > 0.01 || Math.abs(worldZ) > 0.01) {
-        this.rotation = Math.atan2(worldX, worldZ);
-      }
     } else {
       // Decelerate smoothly when no input
       this.velocity.x *= 0.85;
@@ -1535,49 +1458,11 @@ class Player {
     this.position.x = THREE.MathUtils.clamp(this.position.x, -worldBound, worldBound);
     this.position.z = THREE.MathUtils.clamp(this.position.z, -worldBound, worldBound);
 
-    // Update mesh position
-    this.mesh.position.copy(this.position);
-    this.mesh.position.y += 2.5;
-    
     // Update light position
     if (this.light) {
       this.light.position.copy(this.position);
       this.light.position.y += 5;
     }
-
-    // Animation
-    this.updateAnimation(delta);
-  }
-
-  updateAnimation(delta) {
-    const textures = this.isMoving ? this.walkTextures : this.idleTextures;
-    if (textures.length === 0) return;
-
-    // Adjust frame speed for running
-    const speed = this.isMoving && this.isRunning ? this.frameSpeed * 0.6 : this.frameSpeed;
-
-    this.frameTimer += delta;
-    if (this.frameTimer >= speed) {
-      this.frameTimer = 0;
-      this.frameIndex = (this.frameIndex + 1) % textures.length;
-      this.material.map = textures[this.frameIndex];
-      this.material.needsUpdate = true;
-    }
-
-    // Reset frame index when animation changes
-    const newAnim = this.isMoving ? 'walk' : 'idle';
-    if (newAnim !== this.currentAnim) {
-      this.currentAnim = newAnim;
-      this.frameIndex = 0;
-      this.frameTimer = 0;
-    }
-  }
-
-  setCharacter(charName) {
-    if (this.mesh) {
-      scene.remove(this.mesh);
-    }
-    this.loadTextures(charName);
   }
 }
 
@@ -1586,42 +1471,43 @@ class CameraController {
   constructor(camera, target) {
     this.camera = camera;
     this.target = target;
-    this.distance = 20;
-    this.minDistance = 8;
-    this.maxDistance = 40;
-    this.rotationX = 0;
-    this.rotationY = Math.PI * 0.2; // Slight elevation
-    this.minRotationY = 0.1;
-    this.maxRotationY = Math.PI / 2 - 0.1;
+    this.distance = 0; // First-person: camera at player position
+    this.eyeHeight = 1.7; // Human eye height in meters
+    this.rotationX = 0; // Horizontal rotation (yaw)
+    this.rotationY = 0; // Vertical rotation (pitch)
+    this.minRotationY = -Math.PI / 2 + 0.1; // Look down limit
+    this.maxRotationY = Math.PI / 2 - 0.1; // Look up limit
     this.mouseSensitivity = 0.003;
-    this.smoothing = 0.1;
+    this.smoothing = 0.15;
     this.targetPosition = new THREE.Vector3();
   }
 
   update(playerPosition) {
-    // Calculate camera position
-    const x = playerPosition.x + this.distance * Math.sin(this.rotationX) * Math.cos(this.rotationY);
-    const y = playerPosition.y + this.distance * Math.sin(this.rotationY) + 5;
-    const z = playerPosition.z + this.distance * Math.cos(this.rotationX) * Math.cos(this.rotationY);
+    // First-person: camera at player position + eye height
+    const targetPos = new THREE.Vector3(
+      playerPosition.x,
+      playerPosition.y + this.eyeHeight,
+      playerPosition.z
+    );
 
     // Smooth camera movement
-    this.camera.position.lerp(new THREE.Vector3(x, y, z), this.smoothing);
+    this.camera.position.lerp(targetPos, this.smoothing);
 
-    // Look at player
-    this.targetPosition.copy(playerPosition);
-    this.targetPosition.y += 3;
+    // Calculate look direction from rotation angles
+    const lookDistance = 10; // Distance to look-at point
+    this.targetPosition.set(
+      this.camera.position.x - Math.sin(this.rotationX) * Math.cos(this.rotationY) * lookDistance,
+      this.camera.position.y + Math.sin(this.rotationY) * lookDistance,
+      this.camera.position.z - Math.cos(this.rotationX) * Math.cos(this.rotationY) * lookDistance
+    );
+    
     this.camera.lookAt(this.targetPosition);
   }
 
   handleMouseMove(movementX, movementY) {
     this.rotationX -= movementX * this.mouseSensitivity;
-    this.rotationY += movementY * this.mouseSensitivity;
+    this.rotationY -= movementY * this.mouseSensitivity;
     this.rotationY = THREE.MathUtils.clamp(this.rotationY, this.minRotationY, this.maxRotationY);
-  }
-
-  handleWheel(deltaY) {
-    this.distance += deltaY * 0.01;
-    this.distance = THREE.MathUtils.clamp(this.distance, this.minDistance, this.maxDistance);
   }
 
   getHorizontalAngle() {
@@ -1646,10 +1532,10 @@ window.addEventListener('keydown', (e) => {
     handleInteraction();
   }
   
-  // Handle loading screen - redirect to fighting game for character selection
+  // Handle loading screen - ENTER to start virtual tour
   if (e.code === 'Enter' && gameState.status === 'loading') {
-    localStorage.removeItem('fightingGameMode'); // Clear any previous flag
-    window.location.href = './fighting.html';
+    console.log('ENTER pressed - starting virtual tour');
+    startGame();
   }
 });
 
@@ -1839,50 +1725,14 @@ if (timePlayPauseBtn) {
   });
 }
 
-function showCharacterSelection() {
-  loadingScreen.style.display = 'none';
-  charSelection.style.display = 'flex';
-  gameState.status = 'charSelect';
-  
-  // Populate character options
-  charOptions.innerHTML = '';
-  Object.entries(characterData).forEach(([key, char]) => {
-    const card = document.createElement('div');
-    card.className = 'char-card' + (key === gameState.selectedCharacter ? ' selected' : '');
-    card.innerHTML = `
-      <div class="card-inner">
-        <div class="char-image-container">
-          <img src="${char.idle[0]}" alt="${char.name}" />
-        </div>
-        <div class="char-info">
-          <div class="name">${char.name}</div>
-          <div class="title">${char.title}</div>
-        </div>
-      </div>
-    `;
-    card.addEventListener('click', () => {
-      document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      gameState.selectedCharacter = key;
-    });
-    charOptions.appendChild(card);
-  });
-}
+// Character selection removed - using first-person view
 
 function startGame() {
-  charSelection.style.display = 'none';
+  loadingScreen.style.display = 'none';
   gameHud.style.display = 'block';
   gameState.status = 'playing';
   
-  // Update HUD
-  const charData = characterData[gameState.selectedCharacter];
-  if (playerAvatar) playerAvatar.src = charData.idle[0];
-  if (playerNameEl) playerNameEl.textContent = charData.name;
-  
-  // Load player character
-  player.setCharacter(gameState.selectedCharacter);
-  
-  // Request pointer lock
+  // Request pointer lock for first-person controls
   setTimeout(() => {
     canvas.requestPointerLock();
   }, 100);
@@ -2076,13 +1926,7 @@ if (resumeBtn) {
   resumeBtn.addEventListener('click', togglePause);
 }
 
-if (changeCharBtn) {
-  changeCharBtn.addEventListener('click', () => {
-    pauseMenu.style.display = 'none';
-    gameHud.style.display = 'none';
-    showCharacterSelection();
-  });
-}
+// Character change removed - first-person mode only
 
 if (exitBtn) {
   exitBtn.addEventListener('click', () => {
@@ -2127,20 +1971,8 @@ if (DEBUG_COLLISION) {
 // Initialize camera controller
 cameraController = new CameraController(camera, player.position);
 
-// Check if returning from fighting game or initial character selection
-const characterSelected = localStorage.getItem('characterSelected');
-const selectedP1 = localStorage.getItem('selectedP1');
-
-if (characterSelected === 'true' && selectedP1) {
-  // Skip loading screen and go directly to game
-  console.log('[Virtual Tour] Character already selected:', selectedP1);
-  gameState.selectedCharacter = selectedP1;
-  loadingScreen.style.display = 'none';
-  startGame();
-} else {
-  // Show loading screen, wait for ENTER to go to fighting.html
-  // No need to update loadingText since we removed it from HTML
-}
+// Loading screen waits for user to press ENTER
+console.log('[Virtual Tour] Loading complete - waiting for ENTER key');
 
 // ===== ANIMATION LOOP =====
 const clock = new THREE.Clock();

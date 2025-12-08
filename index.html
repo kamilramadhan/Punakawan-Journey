@@ -24,25 +24,14 @@
     <!-- Loading Screen -->
     <div id="loading-screen">
       <img src="loading.png" alt="Loading" style="width: 100%; height: 100%; object-fit: cover;" />
-      <p class="loading-hint" style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); color: white; font-size: 24px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);"></p>
+      <p class="loading-hint" style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); color: white; font-size: 24px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">Tekan ENTER untuk mulai</p>
     </div>
 
-    <!-- Character Selection -->
-    <div id="char-selection" style="display: none;">
-      <div class="selection-panel">
-        <h2>PILIH KARAKTER</h2>
-        <div id="char-options" class="char-grid"></div>
-        <button id="start-explore-btn">JELAJAHI DUNIA</button>
-      </div>
-    </div>
+    <!-- Character Selection removed - using first-person view -->
 
     <!-- Game HUD -->
     <div id="game-hud" style="display: none;">
       <div class="hud-top">
-        <div class="player-info">
-          <img id="player-avatar" class="avatar" src="./textures/bagong/idle/idle 1.png" alt="Player" />
-          <div class="player-name" id="player-name">Bagong</div>
-        </div>
         <div class="location-info">
           <span id="location-name">Borobudur Temple</span>
         </div>
@@ -75,7 +64,6 @@
       <div class="menu-card">
         <h2>PAUSE</h2>
         <button id="resume-btn">Lanjutkan</button>
-        <button id="change-char-btn">Ganti Karakter</button>
         <button id="exit-btn">Keluar</button>
       </div>
     </div>
