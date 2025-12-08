@@ -1814,6 +1814,9 @@ function enterFightingGame(landmark) {
   // Set flag to indicate coming from virtual tour
   localStorage.setItem('fightingGameMode', 'fromVirtualTour');
   
+  // Save landmark key to determine map automatically
+  localStorage.setItem('landmarkKey', landmark.key);
+  
   // Save current game state to return later
   localStorage.setItem('virtualTourReturnPoint', JSON.stringify({
     character: gameState.selectedCharacter,

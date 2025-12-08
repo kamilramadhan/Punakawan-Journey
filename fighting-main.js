@@ -1129,8 +1129,9 @@ function createCharacterSelectionUI() {
           const fightingMode = localStorage.getItem('fightingGameMode');
           
           if (fightingMode === 'fromVirtualTour') {
-            // Coming from virtual tour (E key) - go to map selection
-            try { showMapSelection(); } catch (err) { console.warn('[UI] showMapSelection failed', err); }
+            // Coming from virtual tour - map already auto-selected, start match
+            console.log('[Character Selection] From virtual tour - starting match');
+            startMatch();
           } else {
             // Initial character selection - go to virtual tour
             localStorage.setItem('characterSelected', 'true');
@@ -1395,9 +1396,48 @@ function showClickTooltip(text = 'Memuat...', ms = 1100) {
   
   setTimeout(() => {
     if (fightingMode === 'fromVirtualTour') {
-      // Coming from virtual tour (E key) - skip character selection, go directly to map selection
-      console.log('[Fighting] Mode: From Virtual Tour - Opening Map Selection');
-      showMapSelection();
+      // Coming from virtual tour (E key) - auto-select map based on landmark, then show character selection
+      console.log('[Fighting] Mode: From Virtual Tour - Auto-selecting map');
+      
+      const landmarkKey = localStorage.getItem('landmarkKey');
+      let mapIndex = 1; // Default: latar.jpg
+      
+      // Map landmark to map file:
+      // candiCetho -> latar.jpg (1)
+      // borobudur -> latar2.png (2)
+      // gerbangTrowulan -> latar3.png (3)
+      // prambanan -> latar4.png (4)
+      // candiParit -> latar5.png (5)
+      switch(landmarkKey) {
+        case 'candiCetho':
+          mapIndex = 1; // latar.jpg
+          break;
+        case 'borobudur':
+          mapIndex = 2; // latar2.png
+          break;
+        case 'gerbangTrowulan':
+          mapIndex = 3; // latar3.png
+          break;
+        case 'prambanan':
+          mapIndex = 4; // latar4.png
+          break;
+        case 'candiParit':
+          mapIndex = 5; // latar5.png
+          break;
+        default:
+          mapIndex = 1;
+      }
+      
+      console.log('[Fighting] Landmark:', landmarkKey, '-> Map:', mapIndex);
+      
+      // Auto-select map without showing selection UI
+      selectedMap = mapPaths[mapIndex - 1];
+      loadBackground(selectedMap);
+      loadMapDecorations(mapIndex);
+      
+      // Show character selection AFTER map is loaded
+      console.log('[Fighting] Map loaded, opening character selection');
+      openCharacterSelectionUI();
     } else {
       // Initial load or from menu - show character selection
       console.log('[Fighting] Mode: Initial Load - Opening Character Selection');
