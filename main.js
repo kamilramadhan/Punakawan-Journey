@@ -22,6 +22,7 @@ const gameState = {
 // ===== COLLISION BOXES & OBJECTS =====
 const collisionBoxes = [];
 const lamps = []; // Store lamp lights to toggle them
+const buildingModels = []; // Store building models to rotate them toward player
 
 // ===== CHARACTER DATA WITH LORE =====
 const characterData = {
@@ -535,6 +536,10 @@ function createCandiCetho(offsetX, offsetZ) {
         }
       });
       
+      // Store model reference for rotation
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
+      
       // Add to scene
       scene.add(model);
       
@@ -582,6 +587,10 @@ function createPrambananTemple(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
+      
+      // Store model reference for rotation
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -672,6 +681,10 @@ function createGerbangTrowulan(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
+      
+      // Store model reference for rotation
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -801,6 +814,10 @@ function createBorobudurTemple(offsetX, offsetZ) {
         }
       });
       
+      // Store model reference for rotation
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
+      
       // Add to scene
       scene.add(model);
       
@@ -847,6 +864,10 @@ function loadCandiParit(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
+      
+      // Store model reference for rotation
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -2017,6 +2038,16 @@ function animate() {
     // Update UI
     updateInteractionPrompt();
     updateMinimap();
+    
+    // Rotate buildings to face player
+    buildingModels.forEach(building => {
+      if (building && building.position) {
+        const dx = player.position.x - building.position.x;
+        const dz = player.position.z - building.position.z;
+        const angle = Math.atan2(dx, dz);
+        building.rotation.y = angle;
+      }
+    });
     
     // Animate POI orbs
     scene.traverse(obj => {
