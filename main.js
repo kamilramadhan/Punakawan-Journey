@@ -375,6 +375,20 @@ scene.add(sunLight);
 const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x3d5c3d, 0.5);
 scene.add(hemiLight);
 
+// Moon light for night time
+const moonLight = new THREE.DirectionalLight(0xaaaaff, 0);
+moonLight.position.set(-100, 200, -100);
+moonLight.castShadow = true;
+moonLight.shadow.mapSize.width = 2048;
+moonLight.shadow.mapSize.height = 2048;
+moonLight.shadow.camera.near = 10;
+moonLight.shadow.camera.far = 500;
+moonLight.shadow.camera.left = -300;
+moonLight.shadow.camera.right = 300;
+moonLight.shadow.camera.top = 300;
+moonLight.shadow.camera.bottom = -300;
+scene.add(moonLight);
+
 // ===== MATERIALS =====
 const stoneMaterial = new THREE.MeshStandardMaterial({
   color: 0x8B8B7A,
@@ -1025,28 +1039,16 @@ const asphaltMaterial = new THREE.MeshStandardMaterial({
 });
 
 function createAllPaths() {
-  // Create paths connecting all landmarks
+  // Create paths from center (spawn point at 0,0) to each building
+  const centerSpawn = { x: 0, z: 0 };
+  
   const pathConnections = [
-    // From Borobudur center
-    { start: { x: 0, z: 40 }, end: { x: 0, z: 100 } },
-    { start: { x: 40, z: 0 }, end: { x: 100, z: 100 } },      // To Prambanan
-    { start: { x: -40, z: 0 }, end: { x: -100, z: 100 } },    // To Lempuyang
-    { start: { x: 0, z: -40 }, end: { x: 0, z: -150 } },      // To Danau Batur
-    
-    // Cross paths
-    { start: { x: 100, z: 100 }, end: { x: 200, z: 200 } },   // Continue to Prambanan
-    { start: { x: -100, z: 100 }, end: { x: -200, z: 200 } }, // Continue to Lempuyang
-    { start: { x: 0, z: -150 }, end: { x: 0, z: -250 } },     // Continue to Danau Batur
-    
-    // Connecting paths between landmarks
-    { start: { x: 200, z: 200 }, end: { x: -200, z: 200 } },  // Prambanan to Lempuyang
-    { start: { x: 200, z: 200 }, end: { x: 100, z: -150 } },  // Prambanan to Danau Batur
-    { start: { x: -200, z: 200 }, end: { x: -100, z: -150 } }, // Lempuyang to Danau Batur
-    
-    // Paths to Candi Parit
-    { start: { x: 40, z: -40 }, end: { x: 150, z: -150 } },   // Borobudur to Candi Parit
-    { start: { x: 200, z: 150 }, end: { x: 150, z: -150 } },  // Prambanan to Candi Parit
-    { start: { x: 50, z: -250 }, end: { x: 150, z: -150 } },  // Danau Batur to Candi Parit
+    // From center spawn to each landmark
+    { start: centerSpawn, end: { x: 0, z: 300 } },        // To Gerbang Trowulan (North)
+    { start: centerSpawn, end: { x: 300, z: 0 } },        // To Candi Cetho (East)
+    { start: centerSpawn, end: { x: -300, z: 0 } },       // To Candi Parit (West)
+    { start: centerSpawn, end: { x: -200, z: -300 } },    // To Prambanan (Southwest)
+    { start: centerSpawn, end: { x: 200, z: -300 } },     // To Borobudur (Southeast)
   ];
 
   pathConnections.forEach(path => {
@@ -1628,12 +1630,13 @@ function updateSunPosition(timeValue) {
   
   switch(phase) {
     case 'night':
-      // Midnight blues
+      // Midnight blues with moonlight
       scene.background = new THREE.Color(0x050520);
       scene.fog.color.setHex(0x050520);
       scene.fog.density = 0.002;
-      sunLight.intensity = 0.2;
-      sunLight.color.setHex(0x8888ff); // Moonlight
+      sunLight.intensity = 0;
+      moonLight.intensity = 0.4; // Activate moon light
+      moonLight.color.setHex(0xaaddff);
       ambientLight.intensity = 0.15;
       hemiLight.intensity = 0.15;
       hemiLight.groundColor.setHex(0x111111);
@@ -1656,6 +1659,7 @@ function updateSunPosition(timeValue) {
       scene.fog.density = 0.0015;
       sunLight.intensity = 0.3 + (t * 0.7);
       sunLight.color.setHex(0xffaa66);
+      moonLight.intensity = 0.3 * (1 - t); // Fade out moon
       ambientLight.intensity = 0.2 + (t * 0.2);
       hemiLight.intensity = 0.2 + (t * 0.3);
       hemiLight.groundColor.setHex(0x332211);
@@ -1673,6 +1677,7 @@ function updateSunPosition(timeValue) {
       scene.fog.density = 0.0008;
       sunLight.intensity = 1.2;
       sunLight.color.setHex(0xfff5e6);
+      moonLight.intensity = 0; // Moon light off during day
       ambientLight.intensity = 0.4;
       hemiLight.intensity = 0.5;
       hemiLight.groundColor.setHex(0x3d5c3d);
@@ -1695,6 +1700,7 @@ function updateSunPosition(timeValue) {
       scene.fog.density = 0.0015;
       sunLight.intensity = 1.0 - (t * 0.7);
       sunLight.color.setHex(0xff8844);
+      moonLight.intensity = 0.3 * t; // Fade in moon
       ambientLight.intensity = 0.4 - (t * 0.2);
       hemiLight.intensity = 0.5 - (t * 0.3);
       hemiLight.groundColor.setHex(0x332211);
@@ -1710,8 +1716,9 @@ function updateSunPosition(timeValue) {
       scene.background = new THREE.Color(0x0a1020);
       scene.fog.color.setHex(0x0a1020);
       scene.fog.density = 0.0018;
-      sunLight.intensity = 0.25;
-      sunLight.color.setHex(0x9999ff);
+      sunLight.intensity = 0;
+      moonLight.intensity = 0.35; // Moon light active
+      moonLight.color.setHex(0xaaddff);
       ambientLight.intensity = 0.18;
       hemiLight.intensity = 0.18;
       hemiLight.groundColor.setHex(0x111122);
