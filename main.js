@@ -337,17 +337,21 @@ const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
 
 // ===== THREE.JS SETUP =====
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ 
+  canvas, 
+  antialias: false,  // Disable antialiasing for better performance
+  powerPreference: "high-performance"
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limit pixel ratio
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.BasicShadowMap; // Use basic shadow map for better performance
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
-scene.fog = new THREE.FogExp2(0x87CEEB, 0.0008); // Reduced fog for larger world
+scene.fog = new THREE.FogExp2(0x87CEEB, 0.0012); // Increase fog density to hide far objects
 
 // Perspective camera for 3D world - extended far plane
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 3000);
@@ -361,8 +365,8 @@ scene.add(ambientLight);
 const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
 sunLight.position.set(100, 200, 100);
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 4096;
-sunLight.shadow.mapSize.height = 4096;
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
 sunLight.shadow.camera.near = 10;
 sunLight.shadow.camera.far = 500;
 sunLight.shadow.camera.left = -300;
@@ -452,7 +456,7 @@ function checkCollision(x, z, radius = 1.5) {
       return { collision: true, box, closestX, closestZ, distX, distZ, distance };
     }
   }
-  return { collision: false };
+  return { collision: false, box: null };
 }
 
 // ===== TERRAIN HEIGHT FUNCTION =====
@@ -463,8 +467,8 @@ function getTerrainHeight(x, z) {
 
 // ===== CREATE WORLD =====
 function createWorld() {
-  // Ground plane (grass) - much larger
-  const groundGeometry = new THREE.PlaneGeometry(1000, 1000, 100, 100);
+  // Ground plane (grass) - reduced segments for better performance
+  const groundGeometry = new THREE.PlaneGeometry(1000, 1000, 50, 50); // Reduced from 100x100 to 50x50
   const ground = new THREE.Mesh(groundGeometry, grassMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = 0;
@@ -550,10 +554,6 @@ function createCandiCetho(offsetX, offsetZ) {
         }
       });
       
-      // Store model reference for rotation
-      model.userData.isBuilding = true;
-      buildingModels.push(model);
-      
       // Add to scene
       scene.add(model);
       
@@ -567,8 +567,8 @@ function createCandiCetho(offsetX, offsetZ) {
     }
   );
   
-  // Add collision box around the model
-  addCollisionBox(offsetX, offsetZ, 64, 64);
+  // Add collision box around the model with height
+  addCollisionBox(offsetX, offsetZ, 64, 64, 50); // Height = 50 units70); // Height = 70 units
 }
 
 // ===== PRAMBANAN TEMPLE =====
@@ -602,10 +602,6 @@ function createPrambananTemple(offsetX, offsetZ) {
         }
       });
       
-      // Store model reference for rotation
-      model.userData.isBuilding = true;
-      buildingModels.push(model);
-      
       // Add to scene
       scene.add(model);
       
@@ -619,8 +615,8 @@ function createPrambananTemple(offsetX, offsetZ) {
     }
   );
   
-  // Add collision box around the model
-  addCollisionBox(offsetX, offsetZ, 80, 80);
+  // Add collision box around the model with height
+  addCollisionBox(offsetX, offsetZ, 80, 80, 150); // Height = 150 units
 }
 
 function createPrambananSpire(height) {
@@ -696,10 +692,6 @@ function createGerbangTrowulan(offsetX, offsetZ) {
         }
       });
       
-      // Store model reference for rotation
-      model.userData.isBuilding = true;
-      buildingModels.push(model);
-      
       // Add to scene
       scene.add(model);
       
@@ -713,8 +705,8 @@ function createGerbangTrowulan(offsetX, offsetZ) {
     }
   );
   
-  // Add collision box around the model
-  addCollisionBox(offsetX, offsetZ, 44, 34);
+  // Add collision box around the model with height
+  addCollisionBox(offsetX, offsetZ, 44, 34, 40); // Height = 40 units
 }
 
 function createGatePart(height, width, depth) {
@@ -828,10 +820,6 @@ function createBorobudurTemple(offsetX, offsetZ) {
         }
       });
       
-      // Store model reference for rotation
-      model.userData.isBuilding = true;
-      buildingModels.push(model);
-      
       // Add to scene
       scene.add(model);
       
@@ -845,8 +833,8 @@ function createBorobudurTemple(offsetX, offsetZ) {
     }
   );
   
-  // Add collision box around the model
-  addCollisionBox(offsetX, offsetZ, 120, 120);
+  // Add collision box around the model with height
+  addCollisionBox(offsetX, offsetZ, 120, 120, 100); // Height = 100 units
 }
 
 // ===== CANDI PARIT (3D GLTF MODEL) =====
@@ -878,10 +866,6 @@ function loadCandiParit(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
-      
-      // Store model reference for rotation
-      model.userData.isBuilding = true;
-      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -1144,8 +1128,8 @@ function createTrees() {
     { x: 0, z: -250, radius: 100 },   // Danau Batur
   ];
 
-  // Generate random tree positions
-  for (let i = 0; i < 200; i++) {
+  // Generate random tree positions (reduced for performance)
+  for (let i = 0; i < 50; i++) {
     const x = (Math.random() - 0.5) * 900;
     const z = (Math.random() - 0.5) * 900;
     
@@ -1222,7 +1206,8 @@ function createRocks() {
   const rockGeom = new THREE.DodecahedronGeometry(1);
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.9 });
 
-  for (let i = 0; i < 100; i++) {
+  // Reduced from 100 to 30 rocks for better performance
+  for (let i = 0; i < 30; i++) {
     const rock = new THREE.Mesh(rockGeom, rockMat);
     
     // Random position
@@ -1247,17 +1232,17 @@ function createRocks() {
 }
 
 function createLamps() {
-  // Place lamps along the main paths
+  // Reduced lamp count for better performance
   const pathPoints = [
     // Borobudur to Prambanan
-    { start: { x: 20, z: 20 }, end: { x: 180, z: 180 }, count: 20 },
+    { start: { x: 20, z: 20 }, end: { x: 180, z: 180 }, count: 10 }, // Reduced from 20 to 10
     // Borobudur to Lempuyang
-    { start: { x: -20, z: 20 }, end: { x: -180, z: 180 }, count: 20 },
+    { start: { x: -20, z: 20 }, end: { x: -180, z: 180 }, count: 10 }, // Reduced from 20 to 10
     // Borobudur to Danau Batur
-    { start: { x: 0, z: -20 }, end: { x: 0, z: -230 }, count: 25 },
+    { start: { x: 0, z: -20 }, end: { x: 0, z: -230 }, count: 12 }, // Reduced from 25 to 12
     // Around Borobudur
-    { start: { x: -35, z: -35 }, end: { x: 35, z: -35 }, count: 8 },
-    { start: { x: -35, z: 35 }, end: { x: 35, z: 35 }, count: 8 },
+    { start: { x: -35, z: -35 }, end: { x: 35, z: -35 }, count: 4 }, // Reduced from 8 to 4
+    { start: { x: -35, z: 35 }, end: { x: 35, z: 35 }, count: 4 }, // Reduced from 8 to 4
   ];
 
   pathPoints.forEach(path => {
@@ -1268,9 +1253,8 @@ function createLamps() {
       
       const h = getTerrainHeight(x, z);
       
-      // Offset slightly from path center
-      createLamp(x + 4, z, h);
-      createLamp(x - 4, z, h);
+      // Only create one lamp per position instead of two
+      createLamp(x, z, h);
     }
   });
 }
@@ -1468,10 +1452,25 @@ class Player {
     this.position.y += this.velocity.y * delta;
     this.position.z = newZ;
 
-    // Ground check with terrain height
-    const terrainHeight = getTerrainHeight(this.position.x, this.position.z);
-    if (this.position.y <= terrainHeight) {
-      this.position.y = terrainHeight;
+    // Check collision with height - can stand on top of buildings
+    const collisionResult = checkCollision(this.position.x, this.position.z, playerRadius);
+    let groundHeight = getTerrainHeight(this.position.x, this.position.z);
+    
+    if (collisionResult.collision) {
+      // Player is inside a collision box horizontally
+      const box = collisionResult.box;
+      
+      // If player is above the box, can stand on it
+      if (this.position.y >= box.height - 1) {
+        // Standing on top of the building/structure
+        groundHeight = Math.max(groundHeight, box.height);
+      }
+      // If player is below or inside the box height, it's a wall - already handled by horizontal collision
+    }
+    
+    // Ground check with terrain height or building top
+    if (this.position.y <= groundHeight) {
+      this.position.y = groundHeight;
       this.velocity.y = 0;
       this.isGrounded = true;
     }
@@ -2049,33 +2048,45 @@ function animate() {
     updateInteractionPrompt();
     updateMinimap();
     
-    // Rotate buildings to face player
-    buildingModels.forEach(building => {
-      if (building && building.position) {
-        const dx = player.position.x - building.position.x;
-        const dz = player.position.z - building.position.z;
-        const angle = Math.atan2(dx, dz);
-        building.rotation.y = angle;
-      }
-    });
+    // Optimize animations - only update visible objects
+    const playerPos = player.position;
+    const animationDistance = 100; // Only animate objects within 100 units
     
-    // Animate POI orbs
+    // Animate POI orbs (simple sine wave, very cheap)
     scene.traverse(obj => {
       if (obj.userData && obj.userData.isOrb) {
-        obj.position.y = 2.5 + Math.sin(clock.elapsedTime * 2) * 0.3;
+        const dx = playerPos.x - obj.position.x;
+        const dz = playerPos.z - obj.position.z;
+        const distSq = dx * dx + dz * dz; // Use squared distance to avoid sqrt
+        
+        if (distSq < animationDistance * animationDistance) {
+          obj.position.y = 2.5 + Math.sin(clock.elapsedTime * 2) * 0.3;
+        }
       }
-      // Animate smoke from volcano
-      if (obj.userData && obj.userData.isSmoke) {
-        obj.position.y = obj.userData.baseY + Math.sin(clock.elapsedTime * 0.5 + obj.position.x) * 2;
-        obj.material.opacity = 0.3 + Math.sin(clock.elapsedTime + obj.position.z) * 0.15;
+      // Animate smoke from volcano (only if close)
+      else if (obj.userData && obj.userData.isSmoke) {
+        const dx = playerPos.x - obj.position.x;
+        const dz = playerPos.z - obj.position.z;
+        const distSq = dx * dx + dz * dz;
+        
+        if (distSq < animationDistance * animationDistance) {
+          obj.position.y = obj.userData.baseY + Math.sin(clock.elapsedTime * 0.5 + obj.position.x) * 2;
+          obj.material.opacity = 0.3 + Math.sin(clock.elapsedTime + obj.position.z) * 0.15;
+        }
       }
-      // Animate boats on lake
-      if (obj.userData && obj.userData.isBoat) {
-        const newAngle = obj.userData.angle + clock.elapsedTime * 0.02;
-        obj.position.x = Math.cos(newAngle) * obj.userData.radius;
-        obj.position.z = Math.sin(newAngle) * obj.userData.radius;
-        obj.position.y = 0.3 + Math.sin(clock.elapsedTime * 2) * 0.1;
-        obj.rotation.y = newAngle + Math.PI / 2;
+      // Animate boats on lake (only if close)
+      else if (obj.userData && obj.userData.isBoat) {
+        const dx = playerPos.x - obj.position.x;
+        const dz = playerPos.z - obj.position.z;
+        const distSq = dx * dx + dz * dz;
+        
+        if (distSq < animationDistance * animationDistance) {
+          const newAngle = obj.userData.angle + clock.elapsedTime * 0.02;
+          obj.position.x = Math.cos(newAngle) * obj.userData.radius;
+          obj.position.z = Math.sin(newAngle) * obj.userData.radius;
+          obj.position.y = 0.3 + Math.sin(clock.elapsedTime * 2) * 0.1;
+          obj.rotation.y = newAngle + Math.PI / 2;
+        }
       }
     });
   }
