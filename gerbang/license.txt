@@ -1,11 +1,11 @@
 Model Information:
-* title:	Gerbang Trowulan Majapahit. Kotaraja Gates.
-* source:	https://sketchfab.com/3d-models/gerbang-trowulan-majapahit-kotaraja-gates-98393d8a51d84c0f912f2b2e99a32aed
-* author:	aan.javanese32 (https://sketchfab.com/andrian.javanese32)
+* title:	Gapura Candi Bali
+* source:	https://sketchfab.com/3d-models/gapura-candi-bali-f0dca21a51a149c7b93e8f4e1ed18c37
+* author:	alterego.visual (https://sketchfab.com/alterego.visual)
 
 Model License:
 * license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 * requirements:	Author must be credited. Commercial use is allowed.
 
 If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
-This work is based on "Gerbang Trowulan Majapahit. Kotaraja Gates." (https://sketchfab.com/3d-models/gerbang-trowulan-majapahit-kotaraja-gates-98393d8a51d84c0f912f2b2e99a32aed) by aan.javanese32 (https://sketchfab.com/andrian.javanese32) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+This work is based on "Gapura Candi Bali" (https://sketchfab.com/3d-models/gapura-candi-bali-f0dca21a51a149c7b93e8f4e1ed18c37) by alterego.visual (https://sketchfab.com/alterego.visual) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

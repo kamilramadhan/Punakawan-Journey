@@ -1,11 +1,11 @@
 Model Information:
-* title:	Candi Apit
-* source:	https://sketchfab.com/3d-models/candi-apit-be4a9fe23f5a483e8e79093565ea4155
-* author:	dekahobby (https://sketchfab.com/dekahobby)
+* title:	Miniatur Candi Cangkuang
+* source:	https://sketchfab.com/3d-models/miniatur-candi-cangkuang-b452646304fc4b0abf74ed5abd184e1a
+* author:	thohari87 (https://sketchfab.com/thohari87)
 
 Model License:
-* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
-* requirements:	Author must be credited. Commercial use is allowed.
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
 
 If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
-This work is based on "Candi Apit" (https://sketchfab.com/3d-models/candi-apit-be4a9fe23f5a483e8e79093565ea4155) by dekahobby (https://sketchfab.com/dekahobby) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+This work is based on "Miniatur Candi Cangkuang" (https://sketchfab.com/3d-models/miniatur-candi-cangkuang-b452646304fc4b0abf74ed5abd184e1a) by thohari87 (https://sketchfab.com/thohari87) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)

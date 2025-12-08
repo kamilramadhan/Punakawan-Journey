@@ -538,13 +538,13 @@ function createCandiCetho(offsetX, offsetZ) {
       
       // ★ POSISI KETINGGIAN CANDI CETHO - Ubah angka untuk menyesuaikan ketinggian
       // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
-      const heightOffset = 38; // Sesuaikan nilai ini jika masih melayang
+      const heightOffset = 0; // Sesuaikan nilai ini jika masih melayang
       
       // Position the model on the terrain
       model.position.set(offsetX, terrainY + heightOffset, offsetZ);
       
       // Scale the model (adjust as needed based on visual appearance)
-      model.scale.set(7, 7, 7);
+      model.scale.set(600, 600, 600);
       
       // Enable shadows for all meshes in the model
       model.traverse((child) => {
@@ -553,6 +553,16 @@ function createCandiCetho(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
+      
+      // Calculate initial rotation to face center (spawn point at 0,0)
+      const dx = 400 - offsetX;
+      const dz = 550 - offsetZ;
+      const angle = Math.atan2(dx, dz);
+      model.rotation.y = angle;
+      
+      // Store model reference
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -601,6 +611,16 @@ function createPrambananTemple(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
+      
+      // Calculate initial rotation to face center (spawn point at 0,0)
+      const dx = 0 - offsetX;
+      const dz = 0 - offsetZ;
+      const angle = Math.atan2(dx, dz);
+      model.rotation.y = angle;
+      
+      // Store model reference
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -676,13 +696,13 @@ function createGerbangTrowulan(offsetX, offsetZ) {
       
       // ★ POSISI KETINGGIAN GERBANG TROWULAN - Ubah angka untuk menyesuaikan ketinggian
       // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
-      const heightOffset = 10; // Sesuaikan nilai ini jika masih melayang
+      const heightOffset = 0; // Sesuaikan nilai ini jika masih melayang
       
       // Position the model on the terrain
       model.position.set(offsetX, terrainY + heightOffset, offsetZ);
       
       // Scale the model (adjust as needed based on visual appearance)
-      model.scale.set(12, 12, 12);
+      model.scale.set(100, 100, 100);
       
       // Enable shadows for all meshes in the model
       model.traverse((child) => {
@@ -691,6 +711,16 @@ function createGerbangTrowulan(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
+      
+      // Calculate initial rotation to face center (spawn point at 0,0)
+      const dx = 350 - offsetX;
+      const dz = 400 - offsetZ;
+      const angle = Math.atan2(dx, dz);
+      model.rotation.y = angle;
+      
+      // Store model reference
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -820,6 +850,16 @@ function createBorobudurTemple(offsetX, offsetZ) {
         }
       });
       
+      // Calculate initial rotation to face center (spawn point at 0,0)
+      const dx = 0 - offsetX;
+      const dz = 0 - offsetZ;
+      const angle = Math.atan2(dx, dz);
+      model.rotation.y = angle;
+      
+      // Store model reference
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
+      
       // Add to scene
       scene.add(model);
       
@@ -851,13 +891,13 @@ function loadCandiParit(offsetX, offsetZ) {
       
       // ★ POSISI KETINGGIAN CANDI - Ubah angka -6 untuk menyesuaikan ketinggian
       // Angka negatif = lebih ke bawah, angka positif = lebih ke atas
-      const heightOffset = -70; // Sesuaikan nilai ini jika masih melayang
+      const heightOffset = -30; // Sesuaikan nilai ini jika masih melayang
       
       // Position the model on the terrain
       model.position.set(offsetX, terrainY + heightOffset, offsetZ);
       
       // Scale the model (adjust as needed based on visual appearance)
-      model.scale.set(12, 12, 12);
+      model.scale.set(100, 100, 100);
       
       // Enable shadows for all meshes in the model
       model.traverse((child) => {
@@ -866,6 +906,16 @@ function loadCandiParit(offsetX, offsetZ) {
           child.receiveShadow = true;
         }
       });
+      
+      // Calculate initial rotation to face center (spawn point at 0,0)
+      const dx = 0 - offsetX;
+      const dz = 0 - offsetZ;
+      const angle = Math.atan2(dx, dz);
+      model.rotation.y = angle;
+      
+      // Store model reference
+      model.userData.isBuilding = true;
+      buildingModels.push(model);
       
       // Add to scene
       scene.add(model);
@@ -1120,20 +1170,21 @@ function createAllPaths() {
 function createTrees() {
   const treePositions = [];
   
-  // Landmark positions to avoid
+  // Updated landmark positions based on actual building locations
   const exclusionZones = [
-    { x: 0, z: 0, radius: 80 },       // Borobudur
-    { x: 200, z: 200, radius: 100 },  // Prambanan
-    { x: -200, z: 200, radius: 60 },  // Lempuyang
-    { x: 0, z: -250, radius: 100 },   // Danau Batur
+    { x: 0, z: 300, radius: 70 },       // Gerbang Trowulan (North)
+    { x: 300, z: 0, radius: 70 },       // Candi Cetho (East)
+    { x: -300, z: 0, radius: 70 },      // Candi Parit (West)
+    { x: -200, z: -300, radius: 90 },   // Prambanan (Southwest)
+    { x: 200, z: -300, radius: 90 },    // Borobudur (Southeast)
   ];
 
-  // Generate random tree positions (reduced for performance)
-  for (let i = 0; i < 50; i++) {
+  // Generate random tree positions around buildings and roads
+  for (let i = 0; i < 150; i++) { // Increased tree count
     const x = (Math.random() - 0.5) * 900;
     const z = (Math.random() - 0.5) * 900;
     
-    // Check if position is in any exclusion zone
+    // Check if position is in any exclusion zone (not too close to buildings)
     let inExclusionZone = false;
     for (const zone of exclusionZones) {
       const dist = Math.sqrt((x - zone.x) ** 2 + (z - zone.z) ** 2);
@@ -1143,7 +1194,35 @@ function createTrees() {
       }
     }
     
-    if (!inExclusionZone) {
+    // Also avoid placing trees directly on roads (within 3 units of road center)
+    const roadPaths = [
+      { start: { x: 0, z: 0 }, end: { x: 0, z: 300 } },
+      { start: { x: 0, z: 0 }, end: { x: 300, z: 0 } },
+      { start: { x: 0, z: 0 }, end: { x: -300, z: 0 } },
+      { start: { x: 0, z: 0 }, end: { x: -200, z: -300 } },
+      { start: { x: 0, z: 0 }, end: { x: 200, z: -300 } },
+    ];
+    
+    let onRoad = false;
+    for (const road of roadPaths) {
+      const dx = road.end.x - road.start.x;
+      const dz = road.end.z - road.start.z;
+      const length = Math.sqrt(dx * dx + dz * dz);
+      
+      // Check distance to road line
+      for (let t = 0; t <= 1; t += 0.05) {
+        const roadX = road.start.x + dx * t;
+        const roadZ = road.start.z + dz * t;
+        const distToRoad = Math.sqrt((x - roadX) ** 2 + (z - roadZ) ** 2);
+        if (distToRoad < 3) {
+          onRoad = true;
+          break;
+        }
+      }
+      if (onRoad) break;
+    }
+    
+    if (!inExclusionZone && !onRoad) {
       treePositions.push({ x, z });
     }
   }
@@ -1232,29 +1311,40 @@ function createRocks() {
 }
 
 function createLamps() {
-  // Reduced lamp count for better performance
+  // Paths from center (0,0) to each building - place lamps along the roads
   const pathPoints = [
-    // Borobudur to Prambanan
-    { start: { x: 20, z: 20 }, end: { x: 180, z: 180 }, count: 10 }, // Reduced from 20 to 10
-    // Borobudur to Lempuyang
-    { start: { x: -20, z: 20 }, end: { x: -180, z: 180 }, count: 10 }, // Reduced from 20 to 10
-    // Borobudur to Danau Batur
-    { start: { x: 0, z: -20 }, end: { x: 0, z: -230 }, count: 12 }, // Reduced from 25 to 12
-    // Around Borobudur
-    { start: { x: -35, z: -35 }, end: { x: 35, z: -35 }, count: 4 }, // Reduced from 8 to 4
-    { start: { x: -35, z: 35 }, end: { x: 35, z: 35 }, count: 4 }, // Reduced from 8 to 4
+    // To Gerbang Trowulan (North)
+    { start: { x: 0, z: 0 }, end: { x: 0, z: 300 }, count: 15 },
+    // To Candi Cetho (East)
+    { start: { x: 0, z: 0 }, end: { x: 300, z: 0 }, count: 15 },
+    // To Candi Parit (West)
+    { start: { x: 0, z: 0 }, end: { x: -300, z: 0 }, count: 15 },
+    // To Prambanan (Southwest)
+    { start: { x: 0, z: 0 }, end: { x: -200, z: -300 }, count: 18 },
+    // To Borobudur (Southeast)
+    { start: { x: 0, z: 0 }, end: { x: 200, z: -300 }, count: 18 },
   ];
 
   pathPoints.forEach(path => {
-    for (let i = 0; i <= path.count; i++) {
+    for (let i = 1; i <= path.count; i++) { // Start from 1 to skip center
       const t = i / path.count;
       const x = path.start.x + (path.end.x - path.start.x) * t;
       const z = path.start.z + (path.end.z - path.start.z) * t;
       
       const h = getTerrainHeight(x, z);
       
-      // Only create one lamp per position instead of two
-      createLamp(x, z, h);
+      // Calculate perpendicular offset for road sides
+      const dx = path.end.x - path.start.x;
+      const dz = path.end.z - path.start.z;
+      const length = Math.sqrt(dx * dx + dz * dz);
+      const perpX = -dz / length; // Perpendicular vector
+      const perpZ = dx / length;
+      
+      const offset = 4; // 4 units from road center
+      
+      // Place lamps on both sides of the road
+      createLamp(x + perpX * offset, z + perpZ * offset, h);
+      createLamp(x - perpX * offset, z - perpZ * offset, h);
     }
   });
 }

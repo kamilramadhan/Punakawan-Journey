@@ -5,14 +5,14 @@
       "componentType": 5126,
       "count": 65532,
       "max": [
-        6.549787998199463,
-        17.425195693969727,
-        9.258066177368164
+        0.6243399977684021,
+        0.40386998653411865,
+        1.1978600025177002
       ],
       "min": [
-        -2.425036907196045,
-        4.4264631271362305,
-        -3.132891893386841
+        -0.29197999835014343,
+        -0.49373000860214233,
+        0.18491999804973602
       ],
       "type": "VEC3"
     },
@@ -22,14 +22,14 @@
       "componentType": 5126,
       "count": 65532,
       "max": [
-        0.9999963641166687,
-        0.9999988079071045,
-        0.9999833703041077
+        0.9999995827674866,
+        0.9999992847442627,
+        1.0
       ],
       "min": [
-        -0.9999904036521912,
-        -0.9999834895133972,
-        -0.9999962449073792
+        -0.9999983906745911,
+        -0.999998927116394,
+        -0.9991404414176941
       ],
       "type": "VEC3"
     },
@@ -38,52 +38,52 @@
       "componentType": 5126,
       "count": 65532,
       "max": [
-        0.9999759793281555,
-        0.9994739890098572
+        0.9976800084114075,
+        0.9957540035247803
       ],
       "min": [
-        3.099999958067201e-05,
-        0.0
+        0.0021069999784231186,
+        0.29723700881004333
       ],
       "type": "VEC2"
     },
     {
       "bufferView": 0,
       "componentType": 5125,
-      "count": 212136,
+      "count": 344712,
       "type": "SCALAR"
     },
     {
       "bufferView": 2,
       "byteOffset": 1572768,
       "componentType": 5126,
-      "count": 4344,
+      "count": 21071,
       "max": [
-        3.1211130619049072,
-        17.44649887084961,
-        3.800671100616455
+        0.6243399977684021,
+        0.40386998653411865,
+        1.1978600025177002
       ],
       "min": [
-        -0.09709399938583374,
-        11.300128936767578,
-        -0.08496899902820587
+        -0.29197999835014343,
+        -0.49373000860214233,
+        0.18491999804973602
       ],
       "type": "VEC3"
     },
     {
       "bufferView": 2,
-      "byteOffset": 1624896,
+      "byteOffset": 1825620,
       "componentType": 5126,
-      "count": 4344,
+      "count": 21071,
       "max": [
-        0.9997907280921936,
-        0.998641312122345,
-        0.9998275637626648
+        0.9999986886978149,
+        0.9999974370002747,
+        0.9999980926513672
       ],
       "min": [
-        -0.9999200701713562,
-        -0.9986574053764343,
-        -0.9996270537376404
+        -1.0,
+        -1.0,
+        -0.9808056950569153
       ],
       "type": "VEC3"
     },
@@ -91,54 +91,54 @@
       "bufferView": 1,
       "byteOffset": 524256,
       "componentType": 5126,
-      "count": 4344,
+      "count": 21071,
       "max": [
-        0.9938669800758362,
-        0.9994549751281738
+        0.9975950121879578,
+        0.9957789778709412
       ],
       "min": [
-        4.999999873689376e-06,
-        0.00019299999985378236
+        0.03823599964380264,
+        0.29899799823760986
       ],
       "type": "VEC2"
     },
     {
       "bufferView": 0,
-      "byteOffset": 848544,
+      "byteOffset": 1378848,
       "componentType": 5125,
-      "count": 14244,
+      "count": 110274,
       "type": "SCALAR"
     }
   ],
   "asset": {
     "extras": {
-      "author": "dekahobby (https://sketchfab.com/dekahobby)",
-      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
-      "source": "https://sketchfab.com/3d-models/candi-apit-be4a9fe23f5a483e8e79093565ea4155",
-      "title": "Candi Apit"
+      "author": "thohari87 (https://sketchfab.com/thohari87)",
+      "license": "CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)",
+      "source": "https://sketchfab.com/3d-models/miniatur-candi-cangkuang-b452646304fc4b0abf74ed5abd184e1a",
+      "title": "Miniatur Candi Cangkuang"
     },
-    "generator": "Sketchfab-15.23.0",
+    "generator": "Sketchfab-15.50.0",
     "version": "2.0"
   },
   "bufferViews": [
     {
       "buffer": 0,
-      "byteLength": 905520,
+      "byteLength": 1819944,
       "name": "floatBufferViews",
       "target": 34963
     },
     {
       "buffer": 0,
-      "byteLength": 559008,
-      "byteOffset": 905520,
+      "byteLength": 692824,
+      "byteOffset": 1819944,
       "byteStride": 8,
       "name": "floatBufferViews",
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 1677024,
-      "byteOffset": 1464528,
+      "byteLength": 2078472,
+      "byteOffset": 2512768,
       "byteStride": 12,
       "name": "floatBufferViews",
       "target": 34962
@@ -146,46 +146,30 @@
   ],
   "buffers": [
     {
-      "byteLength": 3141552,
+      "byteLength": 4591240,
       "uri": "scene.bin"
     }
   ],
   "extensionsUsed": [
-    "KHR_materials_specular"
+    "KHR_materials_unlit"
   ],
   "images": [
     {
-      "uri": "textures/apit_baseColor.jpeg"
-    },
-    {
-      "uri": "textures/apit_metallicRoughness.png"
+      "uri": "textures/main_baseColor.jpeg"
     }
   ],
   "materials": [
     {
       "doubleSided": true,
       "extensions": {
-        "KHR_materials_specular": {
-          "specularColorFactor": [
-            1.0,
-            1.0,
-            1.0
-          ],
-          "specularFactor": 0.49129061893491843
-        }
+        "KHR_materials_unlit": {}
       },
-      "name": "apit",
-      "occlusionTexture": {
-        "index": 1
-      },
+      "name": "main",
       "pbrMetallicRoughness": {
         "baseColorTexture": {
           "index": 0
         },
-        "metallicFactor": 0.0,
-        "metallicRoughnessTexture": {
-          "index": 1
-        }
+        "metallicFactor": 0.0
       }
     }
   ],
@@ -227,17 +211,17 @@
         1
       ],
       "matrix": [
-        0.9836803674697876,
-        0.005369061138480942,
-        -0.17984464764595032,
+        1.0,
         0.0,
-        -0.019906533882021904,
-        0.9966657757759094,
-        -0.07912666350603081,
         0.0,
-        0.1788201779127121,
-        0.08141542971134164,
-        0.9805074334144592,
+        0.0,
+        0.0,
+        2.220446049250313e-16,
+        -1.0,
+        0.0,
+        0.0,
+        1.0,
+        2.220446049250313e-16,
         0.0,
         0.0,
         0.0,
@@ -251,7 +235,7 @@
         2,
         3
       ],
-      "name": "apit.obj.cleaner.materialmerger.gles"
+      "name": "Scaniverse.obj.cleaner.materialmerger.gles"
     },
     {
       "mesh": 0,
@@ -283,10 +267,6 @@
     {
       "sampler": 0,
       "source": 0
-    },
-    {
-      "sampler": 0,
-      "source": 1
     }
   ]
 }
