@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 // ==========================================
 // WAYANG OPEN WORLD - JAWA & BALI
@@ -313,6 +317,232 @@ Punakawan muncul dalam adegan "Goro-goro" sebagai selingan humor sekaligus kriti
   }
 ];
 
+// ===== Model downscaling helpers =====
+function downscaleTexture(tex, maxSize = 512) {
+  if (!tex || !tex.image) return tex;
+  const img = tex.image;
+  const iw = img.naturalWidth || img.width || img.videoWidth || 0;
+  const ih = img.naturalHeight || img.height || img.videoHeight || 0;
+  if (Math.max(iw, ih) <= maxSize) return tex;
+
+  const scale = maxSize / Math.max(iw, ih);
+  const cw = Math.max(1, Math.floor(iw * scale));
+  const ch = Math.max(1, Math.floor(ih * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  try { ctx.drawImage(img, 0, 0, cw, ch); } catch (e) { return tex; }
+
+  const newTex = new THREE.CanvasTexture(canvas);
+  newTex.wrapS = tex.wrapS; newTex.wrapT = tex.wrapT;
+  if (tex.repeat) newTex.repeat.copy(tex.repeat);
+  if (tex.offset) newTex.offset.copy(tex.offset);
+  newTex.rotation = tex.rotation || 0;
+  // three.js updated texture encoding -> colorSpace
+  if (typeof newTex.colorSpace !== 'undefined') {
+    newTex.colorSpace = tex.colorSpace !== undefined ? tex.colorSpace : (THREE.SRGBColorSpace || null);
+  } else if (typeof newTex.encoding !== 'undefined') {
+    try { newTex.encoding = tex.encoding; } catch (e) {}
+  }
+  newTex.minFilter = THREE.LinearMipMapLinearFilter;
+  newTex.magFilter = THREE.LinearFilter;
+  newTex.anisotropy = 1;
+  newTex.needsUpdate = true;
+  return newTex;
+}
+
+function reduceModelResolution(gltf, opts = {}) {
+  const maxSize = opts.maxSize || 1024;
+  gltf.scene.traverse((child) => {
+    if (!child.isMesh) return;
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    for (let m of mats) {
+      if (!m) continue;
+      if (m.map) m.map = downscaleTexture(m.map, maxSize);
+      if (m.emissiveMap) m.emissiveMap = downscaleTexture(m.emissiveMap, maxSize);
+      if (m.normalMap) m.normalMap = downscaleTexture(m.normalMap, maxSize);
+      if (m.roughnessMap) m.roughnessMap = downscaleTexture(m.roughnessMap, maxSize);
+      if (m.metalnessMap) m.metalnessMap = downscaleTexture(m.metalnessMap, maxSize);
+
+      if (typeof m.roughness === 'number') m.roughness = Math.min(1, (m.roughness || 0.4) + 0.25);
+      if (typeof m.metalness === 'number') m.metalness = Math.max(0, (m.metalness || 0) - 0.2);
+
+      if (m.normalScale && m.normalScale instanceof THREE.Vector2) {
+        m.normalScale.multiplyScalar(0.6);
+      } else if (typeof m.normalScale === 'number') {
+        m.normalScale = m.normalScale * 0.6;
+      }
+
+      const texs = [m.map, m.normalMap, m.roughnessMap, m.metalnessMap, m.emissiveMap];
+      for (const t of texs) if (t) { try { t.anisotropy = 1; t.needsUpdate = true; } catch (e) {} }
+    }
+  });
+}
+
+// Per-model downscale configuration. Set `enabled` to false to skip downscaling for a model.
+const MODEL_DOWNSCALE_CONFIG = {
+  candicetho: { enabled: true, maxSize: 2056 },
+  prambanan: { enabled: true, maxSize: 2056 },
+  borobudur: { enabled: false, maxSize: 2056 },
+  gerbang: { enabled: false, maxSize: 2056 },
+  candiparit: { enabled: false, maxSize: 2056 }
+};
+
+function setTempleDownscale(id, enabled, maxSize) {
+  if (!MODEL_DOWNSCALE_CONFIG[id]) MODEL_DOWNSCALE_CONFIG[id] = {};
+  MODEL_DOWNSCALE_CONFIG[id].enabled = !!enabled;
+  if (typeof maxSize === 'number') MODEL_DOWNSCALE_CONFIG[id].maxSize = maxSize;
+}
+
+function getTempleDownscaleConfig(id) {
+  return MODEL_DOWNSCALE_CONFIG[id] || { enabled: true, maxSize: 1024 };
+}
+
+// Flat material helper (optional): replace PBR materials with simpler Lambert materials
+function replaceWithFlatMaterials(gltf) {
+  gltf.scene.traverse((child) => {
+    if (!child.isMesh) return;
+    const oldMat = child.material;
+    const mats = Array.isArray(oldMat) ? oldMat : [oldMat];
+    const newMats = mats.map(m => {
+      if (!m) return m;
+      const color = (m.color && m.color.getHex) ? m.color.getHex() : 0x999999;
+      const emissive = (m.emissive && m.emissive.getHex) ? m.emissive.getHex() : 0x000000;
+      const mat = new THREE.MeshLambertMaterial({ color, emissive });
+      if (m.map) mat.map = downscaleTexture(m.map, 512);
+      mat.needsUpdate = true;
+      return mat;
+    });
+    child.material = Array.isArray(oldMat) ? newMats : newMats[0];
+  });
+}
+
+// Simple LOD registry for models we want to manage
+const MODEL_LOD_REGISTRY = [];
+
+function registerModelLOD(highObj, lowObj, position, threshold = 200) {
+  MODEL_LOD_REGISTRY.push({ high: highObj, low: lowObj, pos: position.clone ? position.clone() : new THREE.Vector3(position.x || 0, position.y || 0, position.z || 0), threshold });
+}
+
+function updateModelLODs(cameraOrPlayerPos) {
+  if (!MODEL_LOD_REGISTRY.length) return;
+  const p = cameraOrPlayerPos || (player ? player.position : null);
+  if (!p) return;
+  for (const entry of MODEL_LOD_REGISTRY) {
+    const d2 = entry.pos.distanceToSquared(p);
+    if (d2 > entry.threshold * entry.threshold) {
+      // far -> show low, hide high
+      if (entry.high.visible) entry.high.visible = false;
+      if (!entry.low.visible) entry.low.visible = true;
+    } else {
+      if (!entry.high.visible) entry.high.visible = true;
+      if (entry.low.visible) entry.low.visible = false;
+    }
+  }
+}
+
+function makeLowQualityClone(model, options = {}) {
+  const maxSize = options.maxSize || 256;
+  const low = model.clone(true);
+  low.traverse(child => {
+    if (!child.isMesh) return;
+    const oldMat = child.material;
+    const mats = Array.isArray(oldMat) ? oldMat : [oldMat];
+    const newMats = mats.map(m => {
+      if (!m) return m;
+      const color = (m.color && m.color.getHex) ? m.color.getHex() : 0x9a9a9a;
+      const newMat = new THREE.MeshLambertMaterial({ color });
+      if (m.map) newMat.map = downscaleTexture(m.map, maxSize);
+      newMat.needsUpdate = true;
+      return newMat;
+    });
+    child.material = Array.isArray(oldMat) ? newMats : newMats[0];
+  });
+  return low;
+}
+
+// ===== Deterministic RNG for procedural generation =====
+// Simple seeded RNG (mulberry32) so tree placement can be reproducible
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Default tree seed - change this to get a different deterministic forest
+let TREE_SEED = 192736;
+function setTreeSeed(seed) { TREE_SEED = seed >>> 0; }
+
+function randomBetween(rng, min, max) {
+  return min + (rng() * (max - min));
+}
+
+// ===== Glow sprite helper (radial gradient sprite for sun/moon/lensglow) =====
+function makeGlowSprite(hexColor = 0xffffff, size = 256, innerAlpha = 1.0, outerAlpha = 0.0) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const c = new THREE.Color(hexColor);
+  const r = Math.round(c.r * 255);
+  const g = Math.round(c.g * 255);
+  const b = Math.round(c.b * 255);
+  const inner = `rgba(${r},${g},${b},${innerAlpha})`;
+  const mid = `rgba(${r},${g},${b},${Math.max(0, innerAlpha * 0.6)})`;
+  const outer = `rgba(${r},${g},${b},${outerAlpha})`;
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, inner);
+  grad.addColorStop(0.35, mid);
+  grad.addColorStop(1, outer);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map: tex, color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthTest: false, depthWrite: false });
+  const spr = new THREE.Sprite(mat);
+  return spr;
+}
+
+// Night fill color helpers
+const NIGHT_FILL_COOL = 0x99bbff; // bluish
+const NIGHT_FILL_WARM = 0xffddcc; // warm sunset tint
+
+/**
+ * Set night fill color directly (hex number or string acceptable)
+ * Example: setNightFillColor(0xffaa88) or setNightFillColor('#ffaa88')
+ */
+function setNightFillColor(hex) {
+  try {
+    if (!nightFillLight) return;
+    const c = new THREE.Color(hex);
+    nightFillLight.color.copy(c);
+  } catch (e) { console.warn('setNightFillColor failed', e); }
+}
+
+/**
+ * Set night fill "temperature" between cool and warm.
+ * t: -1 (cool) ... 0 (neutral) ... +1 (warm)
+ * Example: setNightFillTemperature(1) => warm; setNightFillTemperature(-1) => cool
+ */
+function setNightFillTemperature(t) {
+  try {
+    if (!nightFillLight) return;
+    const tt = Math.max(-1, Math.min(1, t));
+    const factor = (tt + 1) / 2; // map -1..1 to 0..1
+    const cool = new THREE.Color(NIGHT_FILL_COOL);
+    const warm = new THREE.Color(NIGHT_FILL_WARM);
+    const out = cool.clone().lerp(warm, factor);
+    nightFillLight.color.copy(out);
+  } catch (e) { console.warn('setNightFillTemperature failed', e); }
+}
+
+function toggleNightFill(enabled) {
+  try { if (nightFillLight) { nightFillLight.visible = !!enabled; } } catch (e) {}
+}
+
 // ===== DOM ELEMENTS =====
 const loadingScreen = document.getElementById('loading-screen');
 const charSelection = document.getElementById('char-selection');
@@ -337,17 +567,39 @@ const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
 
 // ===== THREE.JS SETUP =====
 const canvas = document.getElementById('scene');
+// Enable MSAA where available and increase pixel ratio cap for crisper edges.
 const renderer = new THREE.WebGLRenderer({ 
   canvas, 
-  antialias: false,  // Disable antialiasing for better performance
-  powerPreference: "high-performance"
+  antialias: false,             // Disable MSAA - we'll use FXAA postprocess instead (cheaper on many platforms)
+  powerPreference: "high-performance",
+  preserveDrawingBuffer: false
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limit pixel ratio
+// Cap pixel ratio to avoid excessive GPU cost on very high-DPI displays
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.BasicShadowMap; // Use basic shadow map for better performance
+// Use sRGB outputColorSpace for more correct colors when using sRGB textures
+// Note: newer three.js replaces outputEncoding with outputColorSpace
+if (typeof renderer.outputColorSpace !== 'undefined') {
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+} else {
+  // Fallback for older three.js
+  try { renderer.outputEncoding = THREE.sRGBEncoding; } catch (e) {}
+}
+// Use physically correct light units so directional light intensities behave predictably
+renderer.physicallyCorrectLights = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
+
+// Improve shadow quality: use PCF soft shadows and keep enabled
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer, less jagged shadows
+renderer.shadowMap.autoUpdate = true;
+console.log('[Renderer] Shadow map enabled:', renderer.shadowMap.enabled, '| Type:', renderer.shadowMap.type);
+
+// Post-processing placeholders — initialize after `scene` and `camera` exist
+let composer;
+let renderPass;
+let fxaaPass;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
@@ -358,40 +610,180 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 // ★ POSISI SPAWN KAMERA - Kamera di belakang karakter
 camera.position.set(0, 15, 30);
 
+// Post-processing: FXAA (cheap antialiasing) setup - initialize now that `scene` and `camera` exist
+try {
+  composer = new EffectComposer(renderer);
+  renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  fxaaPass = new ShaderPass(FXAAShader);
+  const pixelRatioInit = Math.max(1, renderer.getPixelRatio());
+  if (fxaaPass && fxaaPass.material && fxaaPass.material.uniforms && fxaaPass.material.uniforms['resolution']) {
+    fxaaPass.material.uniforms['resolution'].value.set(1 / (window.innerWidth * pixelRatioInit), 1 / (window.innerHeight * pixelRatioInit));
+  }
+  composer.addPass(fxaaPass);
+} catch (e) {
+  console.warn('Postprocessing init failed, continuing without FXAA', e);
+  composer = undefined;
+  fxaaPass = undefined;
+}
+
 // ===== LIGHTING =====
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-scene.add(ambientLight);
+let ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+let sunLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+let hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x3d5c3d, 0.5);
+let moonLight = new THREE.DirectionalLight(0xaaaaff, 0);
+let sunMesh, moonMesh, sunSprite, sunHalo, moonSprite, moonHalo, nightFillLight;
 
-const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
-sunLight.position.set(100, 200, 100);
-sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 2048;
-sunLight.shadow.mapSize.height = 2048;
-sunLight.shadow.camera.near = 10;
-sunLight.shadow.camera.far = 500;
-sunLight.shadow.camera.left = -300;
-sunLight.shadow.camera.right = 300;
-sunLight.shadow.camera.top = 300;
-sunLight.shadow.camera.bottom = -300;
-scene.add(sunLight);
+// Helper to rebuild the main lights. Call this if lights appear broken.
+function rebuildLighting() {
+  // Remove old lights if present
+  try {
+    [ambientLight, sunLight, hemiLight, moonLight, nightFillLight].forEach(l => {
+      if (!l) return;
+      try { scene.remove(l); } catch (e) {}
+      if (l.target) try { scene.remove(l.target); } catch (e) {}
+      if (l.dispose) try { l.dispose(); } catch (e) {}
+    });
+  } catch (e) {}
 
-// Hemisphere light for natural outdoor lighting
-const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x3d5c3d, 0.5);
-scene.add(hemiLight);
+  // Ambient light - moderate base illumination
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
 
-// Moon light for night time
-const moonLight = new THREE.DirectionalLight(0xaaaaff, 0);
-moonLight.position.set(-100, 200, -100);
-moonLight.castShadow = true;
-moonLight.shadow.mapSize.width = 2048;
-moonLight.shadow.mapSize.height = 2048;
-moonLight.shadow.camera.near = 10;
-moonLight.shadow.camera.far = 500;
-moonLight.shadow.camera.left = -300;
-moonLight.shadow.camera.right = 300;
-moonLight.shadow.camera.top = 300;
-moonLight.shadow.camera.bottom = -300;
-scene.add(moonLight);
+  // Sun (directional) - daylight main source
+  sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+  // Place sun far from the scene so it appears distant (less parallax)
+  sunLight.position.set(1000, 800, 1000);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.width = 4096;  // Increased from 2048
+  sunLight.shadow.mapSize.height = 4096; // Increased from 2048
+  sunLight.shadow.camera.near = 1;
+  sunLight.shadow.camera.far = 3500;     // Increased for far objects
+  // Initial orthographic camera bounds (will be updated in animate loop to follow player)
+  sunLight.shadow.camera.left = -350;    // Much wider coverage
+  sunLight.shadow.camera.right = 350;    // Much wider coverage
+  sunLight.shadow.camera.top = 350;      // Much wider coverage
+  sunLight.shadow.camera.bottom = -350;  // Much wider coverage
+  sunLight.shadow.bias = -0.0005;        // Adjusted for better visibility (less acne)
+  sunLight.shadow.normalBias = 0.05;     // Adjusted to reduce peter-panning
+  scene.add(sunLight);
+  scene.add(sunLight.target);
+  
+  console.log('[SunLight] Shadow settings:', {
+    castShadow: sunLight.castShadow,
+    mapSize: sunLight.shadow.mapSize.width + 'x' + sunLight.shadow.mapSize.height,
+    camera: {
+      left: sunLight.shadow.camera.left,
+      right: sunLight.shadow.camera.right,
+      top: sunLight.shadow.camera.top,
+      bottom: sunLight.shadow.camera.bottom,
+      near: sunLight.shadow.camera.near,
+      far: sunLight.shadow.camera.far
+    }
+  });
+
+  // Optional: Add shadow camera helper for debugging (uncomment to visualize shadow frustum)
+  // const sunShadowHelper = new THREE.CameraHelper(sunLight.shadow.camera);
+  // scene.add(sunShadowHelper);
+  // globalThis.sunShadowHelper = sunShadowHelper; // Store for updates
+
+  // Visible sun mesh (simple emissive sphere) - represents the sun in the sky
+  try {
+    if (sunMesh) { scene.remove(sunMesh); sunMesh.geometry?.dispose(); sunMesh.material?.dispose(); }
+    const sunGeom = new THREE.SphereGeometry(30, 32, 32); // Increased from 12 to 30, more segments for smoother appearance
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff4d6, emissive: 0xffee88, emissiveIntensity: 1.0 }); // Added emissive for glow
+    sunMesh = new THREE.Mesh(sunGeom, sunMat);
+    sunMesh.renderOrder = 999;
+    sunMesh.visible = true;
+    sunMesh.position.copy(sunLight.position);
+    scene.add(sunMesh);
+  } catch (e) { console.warn('sunMesh creation failed', e); }
+  // Create additive glow sprites for sun (core + halo)
+  try {
+    if (sunSprite) { try { scene.remove(sunSprite); sunSprite.material.map?.dispose(); sunSprite.material?.dispose(); } catch(e){} }
+    if (sunHalo) { try { scene.remove(sunHalo); sunHalo.material.map?.dispose(); sunHalo.material?.dispose(); } catch(e){} }
+    sunSprite = makeGlowSprite(0xffee88, 512, 1.0, 0.0); // Increased texture size from 256 to 512
+    sunSprite.scale.set(80, 80, 1); // Increased from 32 to 80
+    sunSprite.renderOrder = 1001;
+    sunSprite.position.copy(sunLight.position);
+    scene.add(sunSprite);
+
+    sunHalo = makeGlowSprite(0xffaa66, 512, 0.7, 0.0); // Increased texture size and alpha
+    sunHalo.scale.set(250, 250, 1); // Increased from 140 to 250
+    sunHalo.renderOrder = 999;
+    sunHalo.position.copy(sunLight.position);
+    scene.add(sunHalo);
+  } catch (e) { console.warn('sun sprite creation failed', e); }
+
+  // Hemisphere light for fill
+  hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x3d5c3d, 0.6);
+  scene.add(hemiLight);
+
+  // Moon directional (used at night)
+  moonLight = new THREE.DirectionalLight(0xaaddff, 0.0);
+  // Place moon far opposite the sun
+  moonLight.position.set(-1000, 800, -1000);
+  moonLight.castShadow = true;
+  moonLight.shadow.mapSize.width = 2048;  // Increased from 1024
+  moonLight.shadow.mapSize.height = 2048; // Increased from 1024
+  moonLight.shadow.camera.near = 1;
+  moonLight.shadow.camera.far = 3500;     // Increased for far objects
+  moonLight.shadow.camera.left = -350;    // Much wider coverage
+  moonLight.shadow.camera.right = 350;    // Much wider coverage
+  moonLight.shadow.camera.top = 350;      // Much wider coverage
+  moonLight.shadow.camera.bottom = -350;  // Much wider coverage
+  moonLight.shadow.bias = -0.0005;        // Adjusted for better visibility
+  moonLight.shadow.normalBias = 0.05;     // Adjusted to reduce peter-panning
+  scene.add(moonLight);
+  scene.add(moonLight.target);
+
+  // Visible moon mesh (dim sphere) - appears at night
+  try {
+    if (moonMesh) { scene.remove(moonMesh); moonMesh.geometry?.dispose(); moonMesh.material?.dispose(); }
+    const moonGeom = new THREE.SphereGeometry(20, 32, 32); // Increased from 8 to 20, more segments
+    const moonMat = new THREE.MeshBasicMaterial({ color: 0xe8f4ff, emissive: 0xaaddff, emissiveIntensity: 0.8 }); // Added emissive
+    moonMesh = new THREE.Mesh(moonGeom, moonMat);
+    moonMesh.visible = false;
+    moonMesh.position.copy(moonLight.position);
+    scene.add(moonMesh);
+  } catch (e) { console.warn('moonMesh creation failed', e); }
+  // Create moon glow sprites
+  try {
+    if (moonSprite) { try { scene.remove(moonSprite); moonSprite.material.map?.dispose(); moonSprite.material?.dispose(); } catch(e){} }
+    if (moonHalo) { try { scene.remove(moonHalo); moonHalo.material.map?.dispose(); moonHalo.material?.dispose(); } catch(e){} }
+    moonSprite = makeGlowSprite(0xddeeff, 512, 1.0, 0.0); // Increased texture size and alpha from 0.9 to 1.0
+    moonSprite.scale.set(50, 50, 1); // Increased from 20 to 50
+    moonSprite.renderOrder = 1001;
+    moonSprite.visible = false;
+    moonSprite.position.copy(moonLight.position);
+    scene.add(moonSprite);
+
+    moonHalo = makeGlowSprite(0x99bbff, 512, 0.5, 0.0); // Increased texture size and alpha
+    moonHalo.scale.set(150, 150, 1); // Increased from 72 to 150
+    moonHalo.renderOrder = 999;
+    moonHalo.visible = false;
+    moonHalo.position.copy(moonLight.position);
+    scene.add(moonHalo);
+  } catch (e) { console.warn('moon sprite creation failed', e); }
+
+  // Night fill ambient - bluish soft fill to keep scene readable at night
+  try {
+    if (nightFillLight) { try { scene.remove(nightFillLight); nightFillLight.dispose?.(); } catch (e) {} }
+    nightFillLight = new THREE.AmbientLight(0x99bbff, 0.0);
+    nightFillLight.visible = false;
+    scene.add(nightFillLight);
+  } catch (e) { console.warn('nightFillLight creation failed', e); }
+
+  // Ensure visibility flags reflect time-of-day
+  sunLight.visible = true;
+  moonLight.visible = false;
+}
+
+// Create initial lighting
+rebuildLighting();
+// Re-sync sun/moon based on current time
+try { updateSunPosition(gameState.currentTime || 12); } catch (e) { /* updateSunPosition may be declared later; if so it will run during init */ }
+console.log('[Lighting] rebuilt and synced to time:', gameState.currentTime);
 
 // ===== MATERIALS =====
 const stoneMaterial = new THREE.MeshStandardMaterial({
@@ -474,6 +866,8 @@ function createWorld() {
   ground.position.y = 0;
   ground.receiveShadow = true;
   scene.add(ground);
+  
+  console.log('[Ground] Created with receiveShadow:', ground.receiveShadow);
 
   // Add terrain variation
   const vertices = ground.geometry.attributes.position.array;
@@ -519,12 +913,12 @@ function createWorld() {
   // Create lamps along paths
   createLamps();
 
-  // Create POI markers
-  createPOIMarkers();
+  // POI markers removed - no story markers in virtual tour
+  // createPOIMarkers();
 }
 
 // ===== CANDI CETHO =====
-function createCandiCetho(offsetX, offsetZ) {
+function createCandiCetho(offsetX, offsetZ, opts = {}) {
   // Load 3D GLTF model instead of procedural geometry
   const loader = new GLTFLoader();
   
@@ -532,6 +926,12 @@ function createCandiCetho(offsetX, offsetZ) {
     './candicetho/scene.gltf',
     function (gltf) {
       const model = gltf.scene;
+        // Reduce texture resolution and material sharpness for performance/visual comfort
+        try {
+          const base = getTempleDownscaleConfig('candicetho');
+          const cfg = Object.assign({}, base, (opts.downscale !== undefined ? { enabled: !!opts.downscale } : {}), (typeof opts.maxSize === 'number' ? { maxSize: opts.maxSize } : {}));
+          if (cfg.enabled) reduceModelResolution(gltf, { maxSize: cfg.maxSize || 1024 });
+        } catch (e) { console.warn('reduceModelResolution failed', e); }
       
       // Get terrain height at this position
       const terrainY = getTerrainHeight(offsetX, offsetZ);
@@ -563,8 +963,19 @@ function createCandiCetho(offsetX, offsetZ) {
       // Store model reference
       model.userData.isBuilding = true;
       buildingModels.push(model);
-      
-      // Add to scene
+      // Create a low-quality clone for LOD (flat material + smaller textures)
+      try {
+        const lowModel = makeLowQualityClone(model, { maxSize: 256 });
+        lowModel.position.copy(model.position);
+        lowModel.rotation.copy(model.rotation);
+        lowModel.scale.copy(model.scale);
+        lowModel.visible = false;
+        scene.add(lowModel);
+        // Register LOD (threshold ~500 units)
+        registerModelLOD(model, lowModel, model.position, 500);
+      } catch (e) { console.warn('Failed to create low-quality clone for Candi Cetho', e); }
+
+      // Add high-quality model to scene
       scene.add(model);
       
       console.log('Candi Cetho 3D model loaded successfully');
@@ -582,7 +993,7 @@ function createCandiCetho(offsetX, offsetZ) {
 }
 
 // ===== PRAMBANAN TEMPLE =====
-function createPrambananTemple(offsetX, offsetZ) {
+function createPrambananTemple(offsetX, offsetZ, opts = {}) {
   // Load 3D GLTF model instead of procedural geometry
   const loader = new GLTFLoader();
   
@@ -590,6 +1001,11 @@ function createPrambananTemple(offsetX, offsetZ) {
     './prambanan/scene.gltf',
     function (gltf) {
       const model = gltf.scene;
+        try {
+          const base = getTempleDownscaleConfig('prambanan');
+          const cfg = Object.assign({}, base, (opts.downscale !== undefined ? { enabled: !!opts.downscale } : {}), (typeof opts.maxSize === 'number' ? { maxSize: opts.maxSize } : {}));
+          if (cfg.enabled) reduceModelResolution(gltf, { maxSize: cfg.maxSize || 1024 });
+        } catch (e) { console.warn('reduceModelResolution failed', e); }
       
       // Get terrain height at this position
       const terrainY = getTerrainHeight(offsetX, offsetZ);
@@ -621,7 +1037,17 @@ function createPrambananTemple(offsetX, offsetZ) {
       // Store model reference
       model.userData.isBuilding = true;
       buildingModels.push(model);
-      
+      // Create low-quality clone for LOD
+      try {
+        const lowModel = makeLowQualityClone(model, { maxSize: 256 });
+        lowModel.position.copy(model.position);
+        lowModel.rotation.copy(model.rotation);
+        lowModel.scale.copy(model.scale);
+        lowModel.visible = false;
+        scene.add(lowModel);
+        registerModelLOD(model, lowModel, model.position, 500);
+      } catch (e) { console.warn('Failed to create low-quality clone for Prambanan', e); }
+
       // Add to scene
       scene.add(model);
       
@@ -682,7 +1108,7 @@ function createPrambananSpire(height) {
 
 // ===== LEMPUYANG TEMPLE =====
 // ===== GERBANG TROWULAN =====
-function createGerbangTrowulan(offsetX, offsetZ) {
+function createGerbangTrowulan(offsetX, offsetZ, opts = {}) {
   // Load 3D GLTF model instead of procedural geometry
   const loader = new GLTFLoader();
   
@@ -690,6 +1116,11 @@ function createGerbangTrowulan(offsetX, offsetZ) {
     './gerbang/scene.gltf',
     function (gltf) {
       const model = gltf.scene;
+      try {
+        const base = getTempleDownscaleConfig('gerbang');
+        const cfg = Object.assign({}, base, (opts.downscale !== undefined ? { enabled: !!opts.downscale } : {}), (typeof opts.maxSize === 'number' ? { maxSize: opts.maxSize } : {}));
+        if (cfg.enabled) reduceModelResolution(gltf, { maxSize: cfg.maxSize || 1024 });
+      } catch (e) { console.warn('reduceModelResolution failed', e); }
       
       // Get terrain height at this position
       const terrainY = getTerrainHeight(offsetX, offsetZ);
@@ -721,7 +1152,17 @@ function createGerbangTrowulan(offsetX, offsetZ) {
       // Store model reference
       model.userData.isBuilding = true;
       buildingModels.push(model);
-      
+      // Create low-quality clone for LOD
+      try {
+        const lowModel = makeLowQualityClone(model, { maxSize: 256 });
+        lowModel.position.copy(model.position);
+        lowModel.rotation.copy(model.rotation);
+        lowModel.scale.copy(model.scale);
+        lowModel.visible = false;
+        scene.add(lowModel);
+        registerModelLOD(model, lowModel, model.position, 500);
+      } catch (e) { console.warn('Failed to create low-quality clone for Gerbang Trowulan', e); }
+
       // Add to scene
       scene.add(model);
       
@@ -819,7 +1260,7 @@ function createGuardianStatue() {
 }
 
 // ===== BOROBUDUR TEMPLE =====
-function createBorobudurTemple(offsetX, offsetZ) {
+function createBorobudurTemple(offsetX, offsetZ, opts = {}) {
   // Load 3D GLTF model instead of procedural geometry
   const loader = new GLTFLoader();
   
@@ -827,6 +1268,11 @@ function createBorobudurTemple(offsetX, offsetZ) {
     './borobudur/scene.gltf',
     function (gltf) {
       const model = gltf.scene;
+      try {
+        const base = getTempleDownscaleConfig('borobudur');
+        const cfg = Object.assign({}, base, (opts.downscale !== undefined ? { enabled: !!opts.downscale } : {}), (typeof opts.maxSize === 'number' ? { maxSize: opts.maxSize } : {}));
+        if (cfg.enabled) reduceModelResolution(gltf, { maxSize: cfg.maxSize || 1024 });
+      } catch (e) { console.warn('reduceModelResolution failed', e); }
       
       // Get terrain height at this position
       const terrainY = getTerrainHeight(offsetX, offsetZ);
@@ -859,7 +1305,17 @@ function createBorobudurTemple(offsetX, offsetZ) {
       // Store model reference
       model.userData.isBuilding = true;
       buildingModels.push(model);
-      
+      // Create low-quality clone for LOD
+      try {
+        const lowModel = makeLowQualityClone(model, { maxSize: 256 });
+        lowModel.position.copy(model.position);
+        lowModel.rotation.copy(model.rotation);
+        lowModel.scale.copy(model.scale);
+        lowModel.visible = false;
+        scene.add(lowModel);
+        registerModelLOD(model, lowModel, model.position, 500);
+      } catch (e) { console.warn('Failed to create low-quality clone for Borobudur', e); }
+
       // Add to scene
       scene.add(model);
       
@@ -878,13 +1334,18 @@ function createBorobudurTemple(offsetX, offsetZ) {
 }
 
 // ===== CANDI PARIT (3D GLTF MODEL) =====
-function loadCandiParit(offsetX, offsetZ) {
+function loadCandiParit(offsetX, offsetZ, opts = {}) {
   const loader = new GLTFLoader();
   
   loader.load(
     './candiparit/scene.gltf',
     function (gltf) {
       const model = gltf.scene;
+      try {
+        const base = getTempleDownscaleConfig('candiparit');
+        const cfg = Object.assign({}, base, (opts.downscale !== undefined ? { enabled: !!opts.downscale } : {}), (typeof opts.maxSize === 'number' ? { maxSize: opts.maxSize } : {}));
+        if (cfg.enabled) reduceModelResolution(gltf, { maxSize: cfg.maxSize || 1024 });
+      } catch (e) { console.warn('reduceModelResolution failed', e); }
       
       // Get terrain height at this position
       const terrainY = getTerrainHeight(offsetX, offsetZ);
@@ -916,7 +1377,17 @@ function loadCandiParit(offsetX, offsetZ) {
       // Store model reference
       model.userData.isBuilding = true;
       buildingModels.push(model);
-      
+      // Create low-quality clone for LOD
+      try {
+        const lowModel = makeLowQualityClone(model, { maxSize: 256 });
+        lowModel.position.copy(model.position);
+        lowModel.rotation.copy(model.rotation);
+        lowModel.scale.copy(model.scale);
+        lowModel.visible = false;
+        scene.add(lowModel);
+        registerModelLOD(model, lowModel, model.position, 500);
+      } catch (e) { console.warn('Failed to create low-quality clone for Candi Parit', e); }
+
       // Add to scene
       scene.add(model);
       
@@ -1169,6 +1640,8 @@ function createAllPaths() {
 
 function createTrees() {
   const treePositions = [];
+  // Use deterministic RNG for trees so world is reproducible
+  const rng = mulberry32(TREE_SEED);
   
   // Updated landmark positions based on actual building locations
   const exclusionZones = [
@@ -1181,8 +1654,8 @@ function createTrees() {
 
   // Generate random tree positions around buildings and roads
   for (let i = 0; i < 150; i++) { // Increased tree count
-    const x = (Math.random() - 0.5) * 900;
-    const z = (Math.random() - 0.5) * 900;
+    const x = (rng() - 0.5) * 900;
+    const z = (rng() - 0.5) * 900;
     
     // Check if position is in any exclusion zone (not too close to buildings)
     let inExclusionZone = false;
@@ -1229,25 +1702,28 @@ function createTrees() {
 
   treePositions.forEach(pos => {
     const h = getTerrainHeight(pos.x, pos.z);
-    const tree = createTree();
+    const tree = createTree(rng);
     tree.position.set(pos.x, h, pos.z);
     scene.add(tree);
   });
+  
+  console.log('[Trees] Created', treePositions.length, 'trees with shadow support');
 }
 
-function createTree() {
+function createTree(rng) {
   const group = new THREE.Group();
 
-  // Trunk - slightly curved for natural look
+  // Trunk - slightly curved for natural look (small random offsets)
   const trunkCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0.2, 2, 0.1),
-    new THREE.Vector3(-0.1, 4, 0)
+    new THREE.Vector3((rng() - 0.5) * 0.4, 2, (rng() - 0.5) * 0.4),
+    new THREE.Vector3((rng() - 0.5) * 0.3, 4, (rng() - 0.5) * 0.3)
   ]);
   const trunkGeom = new THREE.TubeGeometry(trunkCurve, 4, 0.4, 8, false);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 1 });
   const trunk = new THREE.Mesh(trunkGeom, trunkMat);
   trunk.castShadow = true;
+  trunk.receiveShadow = true; // Also receive shadows
   group.add(trunk);
 
   // Foliage - Tropical style (palm-ish or banyan-ish)
@@ -1259,23 +1735,25 @@ function createTree() {
   canopy.position.set(0, 4.5, 0);
   canopy.scale.y = 0.8;
   canopy.castShadow = true;
+  canopy.receiveShadow = true; // Also receive shadows
   group.add(canopy);
 
-  // Smaller clumps
-  for(let i=0; i<5; i++) {
-    const size = 1 + Math.random();
+  // Smaller clumps (deterministic)
+  for (let i = 0; i < 5; i++) {
+    const size = 1 + rng();
     const clump = new THREE.Mesh(new THREE.DodecahedronGeometry(size), foliageMat);
     clump.position.set(
-      (Math.random() - 0.5) * 3,
-      4 + Math.random() * 2,
-      (Math.random() - 0.5) * 3
+      (rng() - 0.5) * 3,
+      4 + rng() * 2,
+      (rng() - 0.5) * 3
     );
     clump.castShadow = true;
+    clump.receiveShadow = true; // Also receive shadows
     group.add(clump);
   }
 
-  // Random scale variation
-  const scale = 0.8 + Math.random() * 0.6;
+  // Random scale variation (deterministic)
+  const scale = 0.8 + rng() * 0.6;
   group.scale.set(scale, scale, scale);
 
   return group;
@@ -1312,22 +1790,24 @@ function createRocks() {
 
 function createLamps() {
   // Paths from center (0,0) to each building - place lamps along the roads
+  // Only generate 6 pairs per road; distribute evenly and avoid exact endpoints
   const pathPoints = [
     // To Gerbang Trowulan (North)
-    { start: { x: 0, z: 0 }, end: { x: 0, z: 300 }, count: 15 },
+    { start: { x: 0, z: 0 }, end: { x: 0, z: 300 }, count: 2 },
     // To Candi Cetho (East)
-    { start: { x: 0, z: 0 }, end: { x: 300, z: 0 }, count: 15 },
+    { start: { x: 0, z: 0 }, end: { x: 300, z: 0 }, count: 2 },
     // To Candi Parit (West)
-    { start: { x: 0, z: 0 }, end: { x: -300, z: 0 }, count: 15 },
+    { start: { x: 0, z: 0 }, end: { x: -300, z: 0 }, count: 2 },
     // To Prambanan (Southwest)
-    { start: { x: 0, z: 0 }, end: { x: -200, z: -300 }, count: 18 },
+    { start: { x: 0, z: 0 }, end: { x: -200, z: -300 }, count: 2 },
     // To Borobudur (Southeast)
-    { start: { x: 0, z: 0 }, end: { x: 200, z: -300 }, count: 18 },
+    { start: { x: 0, z: 0 }, end: { x: 200, z: -300 }, count: 2 },
   ];
 
   pathPoints.forEach(path => {
-    for (let i = 1; i <= path.count; i++) { // Start from 1 to skip center
-      const t = i / path.count;
+    // Use count+1 to space lamps evenly between center and temple (excludes exact endpoints)
+    for (let i = 1; i <= path.count; i++) {
+      const t = i / (path.count + 1);
       const x = path.start.x + (path.end.x - path.start.x) * t;
       const z = path.start.z + (path.end.z - path.start.z) * t;
       
@@ -1359,12 +1839,15 @@ function createLamp(x, z, h) {
   const post = new THREE.Mesh(postGeom, postMat);
   post.position.y = 1.5;
   post.castShadow = true;
+  post.receiveShadow = true; // Also receive shadows
   group.add(post);
 
   // Lantern holder
   const holderGeom = new THREE.BoxGeometry(0.6, 0.1, 0.6);
   const holder = new THREE.Mesh(holderGeom, postMat);
   holder.position.y = 2.8;
+  holder.castShadow = true;
+  holder.receiveShadow = true;
   group.add(holder);
 
   // Lantern glass/paper
@@ -1372,21 +1855,18 @@ function createLamp(x, z, h) {
   const lanternMat = new THREE.MeshStandardMaterial({ 
     color: 0xffaa00, 
     emissive: 0xff5500,
-    emissiveIntensity: 0.2,
+    emissiveIntensity: 0.05,
     transparent: true,
     opacity: 0.9
   });
   const lantern = new THREE.Mesh(lanternGeom, lanternMat);
   lantern.position.y = 2.5;
+  lantern.castShadow = true;
+  lantern.receiveShadow = true;
   group.add(lantern);
 
-  // Light source
-  const light = new THREE.PointLight(0xffaa00, 0, 15); // Start with intensity 0 (Day)
-  light.position.y = 2.5;
-  group.add(light);
-  
-  // Store light reference for toggling
-  lamps.push({ light: light, mesh: lantern });
+  // NOTE: Baked emissive lamp only (remove dynamic PointLight to reduce GPU cost)
+  lamps.push({ light: null, mesh: lantern, group });
 
   scene.add(group);
 }
@@ -1406,6 +1886,8 @@ function createPOIMarkers() {
     });
     const pillar = new THREE.Mesh(pillarGeom, pillarMat);
     pillar.position.y = 1;
+    pillar.castShadow = true;
+    pillar.receiveShadow = true;
     markerGroup.add(pillar);
 
     // Floating orb
@@ -1420,6 +1902,7 @@ function createPOIMarkers() {
     const orb = new THREE.Mesh(orbGeom, orbMat);
     orb.position.y = 2.5;
     orb.userData.isOrb = true;
+    orb.castShadow = true;
     markerGroup.add(orb);
 
     // Point light
@@ -1691,14 +2174,64 @@ function updateSunPosition(timeValue) {
     timeDisplay.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   }
   
-  // Calculate sun angle (0° at horizon east, 180° at horizon west)
-  const sunAngle = (timeValue / 24) * Math.PI * 2 - Math.PI / 2;
-  const sunHeight = Math.sin(sunAngle);
-  const sunX = Math.cos(sunAngle) * 200;
-  const sunY = Math.max(10, sunHeight * 200 + 50); // Keep sun above ground
-  const sunZ = Math.sin(sunAngle) * 100;
-  
+  // Calculate sun azimuth and polar angle so the sun will be overhead at noon.
+  const sunAzimuth = ((timeValue - 6) / 24) * Math.PI * 2;
+
+  // Map time to a polar angle theta: noon -> 0 (overhead), 6/18 -> PI/2 (horizon), midnight -> PI (underfoot)
+  const xNorm = (timeValue - 12) / 12; // -1..+1 centered at noon
+  const theta = (Math.PI / 2) * (1 - Math.cos(xNorm * Math.PI));
+
+  const SUN_ORBIT_RADIUS = 2000; // distance from player for distant sun
+
+  // Use `globalThis.player` to avoid TDZ errors if `updateSunPosition` is called before `player` is constructed
+  const originPos = (globalThis && globalThis.player && globalThis.player.position) ? globalThis.player.position : null;
+  const originX = originPos ? originPos.x : 0;
+  const originZ = originPos ? originPos.z : 0;
+  const originY = originPos ? originPos.y : 0;
+
+  const sinTheta = Math.sin(theta);
+  const cosTheta = Math.cos(theta);
+
+  const sunX = originX + SUN_ORBIT_RADIUS * sinTheta * Math.cos(sunAzimuth);
+  const sunY = originY + SUN_ORBIT_RADIUS * cosTheta;
+  const sunZ = originZ + SUN_ORBIT_RADIUS * sinTheta * Math.sin(sunAzimuth);
+
   sunLight.position.set(sunX, sunY, sunZ);
+  // Position the moon opposite the sun in the sky
+  if (moonLight) {
+    try {
+      const moonX = originX - SUN_ORBIT_RADIUS * sinTheta * Math.cos(sunAzimuth);
+      const moonY = originY - SUN_ORBIT_RADIUS * cosTheta;
+      const moonZ = originZ - SUN_ORBIT_RADIUS * sinTheta * Math.sin(sunAzimuth);
+      moonLight.position.set(moonX, moonY, moonZ);
+      if (moonMesh) moonMesh.position.set(moonX, moonY, moonZ);
+    } catch (e) {}
+  }
+  // Point the sun toward the player or world center so lighting direction is correct
+  try {
+    // Use `globalThis.player` to avoid referencing module-scoped `player` before it's initialized
+    const targetPos = (globalThis && globalThis.player && globalThis.player.position) ? globalThis.player.position : new THREE.Vector3(0, 0, 0);
+    sunLight.target.position.copy(targetPos);
+    sunLight.target.updateMatrixWorld();
+    
+    // Update moon light target as well
+    if (moonLight && moonLight.target) {
+      moonLight.target.position.copy(targetPos);
+      moonLight.target.updateMatrixWorld();
+    }
+  } catch (e) { /* non-fatal */ }
+  // Update visible sun/moon mesh positions
+  try { if (sunMesh) sunMesh.position.copy(sunLight.position); } catch (e) {}
+  try {
+    if (sunMesh) sunMesh.position.copy(sunLight.position);
+    if (sunSprite) { sunSprite.position.copy(sunLight.position); sunSprite.visible = !!sunLight.visible && !!sunMesh.visible; }
+    if (sunHalo) { sunHalo.position.copy(sunLight.position); sunHalo.visible = !!sunLight.visible && !!sunMesh.visible; }
+  } catch (e) {}
+  try {
+    if (moonMesh) moonMesh.position.copy(moonLight.position);
+    if (moonSprite) { moonSprite.position.copy(moonLight.position); moonSprite.visible = !!moonLight.visible && !!moonMesh.visible; }
+    if (moonHalo) { moonHalo.position.copy(moonLight.position); moonHalo.visible = !!moonLight.visible && !!moonMesh.visible; }
+  } catch (e) {}
   
   // Determine time of day phase
   let phase;
@@ -1722,17 +2255,27 @@ function updateSunPosition(timeValue) {
       // Midnight blues with moonlight
       scene.background = new THREE.Color(0x050520);
       scene.fog.color.setHex(0x050520);
-      scene.fog.density = 0.002;
+      scene.fog.density = 0.0018;
       sunLight.intensity = 0;
-      moonLight.intensity = 0.4; // Activate moon light
+      if (sunMesh) sunMesh.visible = false;
+      sunLight.visible = false;
+      // Stronger moon light for better night visibility
+      moonLight.intensity = 1.8;
+      moonLight.visible = true;
+      if (moonMesh) moonMesh.visible = true;
       moonLight.color.setHex(0xaaddff);
-      ambientLight.intensity = 0.15;
-      hemiLight.intensity = 0.15;
-      hemiLight.groundColor.setHex(0x111111);
-      // Turn on lamps
+      // Increase ambient/hemisphere to avoid overly dark shadows at night
+      ambientLight.intensity = 0.9;
+      hemiLight.intensity = 0.7;
+      hemiLight.groundColor.setHex(0x111122);
+      // Slight exposure boost at night for readability
+      try { renderer.toneMappingExposure = 1.6; } catch (e) {}
+      // Night fill ambient for softer overall illumination
+      try { if (nightFillLight) { nightFillLight.intensity = 1.0; nightFillLight.visible = true; } } catch (e) {}
+      // Turn on lamps (brighter, sparse)
       lamps.forEach(lamp => {
-        lamp.light.intensity = 2.0;
-        lamp.mesh.material.emissiveIntensity = 1.0;
+        if (lamp.light) lamp.light.intensity = 4.0;
+        if (lamp.mesh && lamp.mesh.material) lamp.mesh.material.emissiveIntensity = 2.5;
       });
       break;
       
@@ -1746,35 +2289,49 @@ function updateSunPosition(timeValue) {
       );
       scene.fog.color.copy(scene.background);
       scene.fog.density = 0.0015;
-      sunLight.intensity = 0.3 + (t * 0.7);
+      sunLight.intensity = 0.4 + (t * 1.1);
       sunLight.color.setHex(0xffaa66);
+      if (sunMesh) sunMesh.visible = true;
+      sunLight.visible = true;
       moonLight.intensity = 0.3 * (1 - t); // Fade out moon
-      ambientLight.intensity = 0.2 + (t * 0.2);
-      hemiLight.intensity = 0.2 + (t * 0.3);
+      if (moonLight.intensity <= 0.001) { moonLight.visible = false; if (moonMesh) moonMesh.visible = false; }
+      ambientLight.intensity = 0.3 + (t * 0.3);
+      hemiLight.intensity = 0.3 + (t * 0.3);
+      try { if (nightFillLight) { nightFillLight.intensity = 0; nightFillLight.visible = false; } } catch (e) {}
       hemiLight.groundColor.setHex(0x332211);
       // Gradually turn off lamps
       lamps.forEach(lamp => {
-        lamp.light.intensity = 2.0 * (1 - t);
-        lamp.mesh.material.emissiveIntensity = 0.2 + (0.8 * (1 - t));
+        if (lamp.light) lamp.light.intensity = 3.5 * (1 - t);
+        if (lamp.mesh && lamp.mesh.material) lamp.mesh.material.emissiveIntensity = 0.2 + (1.8 * (1 - t));
       });
       break;
       
     case 'day':
-      // Bright daylight
-      scene.background = new THREE.Color(0x87CEEB);
-      scene.fog.color.setHex(0x87CEEB);
-      scene.fog.density = 0.0008;
-      sunLight.intensity = 1.2;
-      sunLight.color.setHex(0xfff5e6);
-      moonLight.intensity = 0; // Moon light off during day
-      ambientLight.intensity = 0.4;
-      hemiLight.intensity = 0.5;
-      hemiLight.groundColor.setHex(0x3d5c3d);
-      // Turn off lamps
-      lamps.forEach(lamp => {
-        lamp.light.intensity = 0;
-        lamp.mesh.material.emissiveIntensity = 0.2;
-      });
+        // Bright daylight (increased ambient/sun for clearer noon)
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog.color.setHex(0x87CEEB);
+        scene.fog.density = 0.0008;
+        // Increase sun intensity for stronger directional light
+        sunLight.intensity = 2.6;
+        sunLight.color.setHex(0xfff5e6);
+        if (sunMesh) sunMesh.visible = true;
+        sunLight.visible = true;
+        // Moon off during day
+        moonLight.intensity = 0;
+        moonLight.visible = false;
+        if (moonMesh) moonMesh.visible = false;
+        // Raise ambient and hemisphere to make scene brighter at noon
+        ambientLight.intensity = 1.2; // brighter ambient overall
+        hemiLight.intensity = 0.9;
+        hemiLight.groundColor.setHex(0x3d5c3d);
+        // Slightly boost renderer exposure for daytime clarity (subtle)
+        try { renderer.toneMappingExposure = 1.2; } catch (e) {}
+        // Turn off lamps (they remain baked emissive but dimmed)
+        lamps.forEach(lamp => {
+          if (lamp.light) lamp.light.intensity = 0;
+          if (lamp.mesh && lamp.mesh.material) lamp.mesh.material.emissiveIntensity = 0.15;
+        });
+        try { if (nightFillLight) { nightFillLight.intensity = 0; nightFillLight.visible = false; } } catch (e) {}
       break;
       
     case 'dusk':
@@ -1787,16 +2344,19 @@ function updateSunPosition(timeValue) {
       );
       scene.fog.color.copy(scene.background);
       scene.fog.density = 0.0015;
-      sunLight.intensity = 1.0 - (t * 0.7);
+      sunLight.intensity = 1.4 - (t * 0.6);
       sunLight.color.setHex(0xff8844);
+      sunLight.visible = true;
       moonLight.intensity = 0.3 * t; // Fade in moon
+      if (moonLight.intensity > 0.001) moonLight.visible = true;
       ambientLight.intensity = 0.4 - (t * 0.2);
       hemiLight.intensity = 0.5 - (t * 0.3);
       hemiLight.groundColor.setHex(0x332211);
+      try { if (nightFillLight) { nightFillLight.intensity = 0; nightFillLight.visible = false; } } catch (e) {}
       // Gradually turn on lamps
       lamps.forEach(lamp => {
-        lamp.light.intensity = 2.0 * t;
-        lamp.mesh.material.emissiveIntensity = 0.2 + (0.8 * t);
+        if (lamp.light) lamp.light.intensity = 3.5 * t;
+        if (lamp.mesh && lamp.mesh.material) lamp.mesh.material.emissiveIntensity = 0.2 + (1.8 * t);
       });
       break;
       
@@ -1806,15 +2366,22 @@ function updateSunPosition(timeValue) {
       scene.fog.color.setHex(0x0a1020);
       scene.fog.density = 0.0018;
       sunLight.intensity = 0;
-      moonLight.intensity = 0.35; // Moon light active
+      if (sunMesh) sunMesh.visible = false;
+      sunLight.visible = false;
+      // Brighter moon for early night
+      moonLight.intensity = 0.75;
+      moonLight.visible = true;
+      if (moonMesh) moonMesh.visible = true;
       moonLight.color.setHex(0xaaddff);
-      ambientLight.intensity = 0.18;
-      hemiLight.intensity = 0.18;
+      ambientLight.intensity = 0.45;
+      hemiLight.intensity = 0.35;
       hemiLight.groundColor.setHex(0x111122);
-      // Lamps fully on
+      try { renderer.toneMappingExposure = 1.4; } catch (e) {}
+      try { if (nightFillLight) { nightFillLight.intensity = 0.6; nightFillLight.visible = true; } } catch (e) {}
+      // Lamps fully on and slightly brighter emissive
       lamps.forEach(lamp => {
-        lamp.light.intensity = 2.0;
-        lamp.mesh.material.emissiveIntensity = 1.0;
+        if (lamp.light) lamp.light.intensity = 4.0;
+        if (lamp.mesh && lamp.mesh.material) lamp.mesh.material.emissiveIntensity = 2.5;
       });
       break;
   }
@@ -1848,6 +2415,21 @@ function startGame() {
   loadingScreen.style.display = 'none';
   gameHud.style.display = 'block';
   gameState.status = 'playing';
+  
+  // Debug: Count objects with shadow properties
+  let castShadowCount = 0;
+  let receiveShadowCount = 0;
+  scene.traverse((obj) => {
+    if (obj.isMesh) {
+      if (obj.castShadow) castShadowCount++;
+      if (obj.receiveShadow) receiveShadowCount++;
+    }
+  });
+  console.log('[Shadow Debug] Objects casting shadows:', castShadowCount);
+  console.log('[Shadow Debug] Objects receiving shadows:', receiveShadowCount);
+  console.log('[Shadow Debug] Renderer shadowMap enabled:', renderer.shadowMap.enabled);
+  console.log('[Shadow Debug] SunLight castShadow:', sunLight.castShadow);
+  console.log('[Shadow Debug] SunLight intensity:', sunLight.intensity);
   
   // Request pointer lock for first-person controls
   setTimeout(() => {
@@ -2060,6 +2642,8 @@ if (closeInfoBtn) {
 
 // ===== INITIALIZE =====
 const player = new Player();
+// Expose player on globalThis so other initialization code can safely read it
+globalThis.player = player;
 let cameraController = null;
 
 // Create world
@@ -2141,6 +2725,9 @@ function animate() {
     // Optimize animations - only update visible objects
     const playerPos = player.position;
     const animationDistance = 100; // Only animate objects within 100 units
+
+    // Update simple LOD registry for models
+    updateModelLODs(playerPos);
     
     // Animate POI orbs (simple sine wave, very cheap)
     scene.traverse(obj => {
@@ -2181,7 +2768,43 @@ function animate() {
     });
   }
   
-  renderer.render(scene, camera);
+  // Update dynamic shadow frusta if needed (keep focused on playable area)
+  try {
+    // If a player exists, center the sun shadow frustum around the player X/Z
+    if (typeof player !== 'undefined' && player && player.position) {
+      const radius = 350; // Increased from 180 for wider shadow coverage
+      
+      // Center shadow frustum on player position for better shadow quality
+      const px = player.position.x;
+      const pz = player.position.z;
+      
+      sunLight.shadow.camera.left = px - radius;
+      sunLight.shadow.camera.right = px + radius;
+      sunLight.shadow.camera.top = pz + radius;
+      sunLight.shadow.camera.bottom = pz - radius;
+      sunLight.shadow.camera.updateProjectionMatrix();
+
+      moonLight.shadow.camera.left = px - radius;
+      moonLight.shadow.camera.right = px + radius;
+      moonLight.shadow.camera.top = pz + radius;
+      moonLight.shadow.camera.bottom = pz - radius;
+      moonLight.shadow.camera.updateProjectionMatrix();
+      
+      // Update shadow camera helper if exists (for debugging)
+      if (globalThis.sunShadowHelper) {
+        globalThis.sunShadowHelper.update();
+      }
+    }
+  } catch (e) {
+    // non-fatal
+  }
+
+  // Render with postprocessing (FXAA)
+  if (typeof composer !== 'undefined') {
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
 }
 
 // ===== WINDOW RESIZE =====
@@ -2189,6 +2812,14 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // Keep composer in sync with renderer size and update FXAA resolution
+  if (typeof composer !== 'undefined') {
+    composer.setSize(window.innerWidth, window.innerHeight);
+    const pr = Math.max(1, renderer.getPixelRatio());
+    if (typeof fxaaPass !== 'undefined' && fxaaPass.material && fxaaPass.material.uniforms && fxaaPass.material.uniforms['resolution']) {
+      fxaaPass.material.uniforms['resolution'].value.set(1 / (window.innerWidth * pr), 1 / (window.innerHeight * pr));
+    }
+  }
 });
 
 // Start animation
